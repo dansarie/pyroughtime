@@ -81,6 +81,7 @@ class RoughtimeServer:
         self.thread.start()
 
     def stop(self):
+        'Stops the Roughtime server.'
         if self.run == False:
             return
         self.run = False
@@ -218,24 +219,20 @@ class RoughtimeClient:
     Queries Roughtime servers for the current time and authenticates the replies.
 
     Args:
-        address (str): The server address.
-        port (int): The server port.
-        pubkey (str): The server's public key in base64 format.
+        max_history_len (int): The number of previous replies to keep.
     '''
-    def __init__(self, address, port, pubkey):
-        self.address = address
-        self.port = port
-        self.pubkey = ed25519.VerifyingKey(pubkey, encoding='base64')
+    def __init__(self, max_history_len=100):
+        self.prev_replies = []
+        self.max_history_len = max_history_len
 
-    def query(self, prev_reply=None, timeout=10):
+    def query(self, address, port, pubkey, timeout=10):
         '''
         Sends a time query to the server and waits for a reply.
 
         Args:
-            prev_reply (bytes): A reply previously received from thus or another Roughtime server.
-                    It is used to construct a chain of nonces that can be used to create a
-                    cryptographic proof of cheating. Just pass the 'reply_data' member of the dict
-                    returned by a previous call to this method.
+            address (str): The server address.
+            port (int): The server port.
+            pubkey (str): The server's public key in base64 format.
             timeout (float): Time to wait for a reply from the server.
 
         Raises:
@@ -246,20 +243,17 @@ class RoughtimeClient:
             ret (dict): A dictionary with the following members:
                     midp       - midpoint (MIDP) in microseconds,
                     radi       - accuracy (RADI) in microseconds,
-                    prev_reply - the value passed as prev_reply when calling the method,
-                    blind      - a random blind value used to create the nonce,
-                    nonce      - the nonce sent to the server,
-                    reply_data - the raw data returned by the server,
                     datetime   - a datetime object representing the returned midpoint,
                     prettytime - a string representing the returned time.
         '''
 
+        pubkey = ed25519.VerifyingKey(pubkey, encoding='base64')
+
         # Generate nonce.
-        if prev_reply == None:
-            prev_reply = b''
         blind = os.urandom(64)
         ha = hashlib.sha512()
-        ha.update(prev_reply)
+        if len(self.prev_replies) > 0:
+            ha.update(self.prev_replies[-1][2])
         ha.update(blind)
         nonce = ha.digest()
 
@@ -269,17 +263,17 @@ class RoughtimeClient:
         packet.add_padding()
 
         # Send query and wait for reply.
-        ip_addr = socket.gethostbyname(self.address)
+        ip_addr = socket.gethostbyname(address)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(0.001)
-        sock.sendto(packet.get_value_bytes(), (ip_addr, self.port))
+        sock.sendto(packet.get_value_bytes(), (ip_addr, port))
         start_time = time.monotonic()
         while time.monotonic() - start_time < timeout:
             try:
                 data, (repl_addr, repl_port) = sock.recvfrom(1500)
             except socket.timeout:
                 continue
-            if repl_addr == ip_addr and repl_port == self.port:
+            if repl_addr == ip_addr and repl_port == port:
                 break
         if time.monotonic() - start_time >= timeout:
             raise RoughtimeError('Timeout while waiting for reply.')
@@ -295,11 +289,11 @@ class RoughtimeClient:
             raise RoughtimeError('Missing tag in server reply.')
 
         try:
-            dsig = cert.get_tag('SIG\x00').get_value_bytes()
+            dsig = cert.get_tag('SIG').get_value_bytes()
             midp = srep.get_tag('MIDP').to_int()
             radi = srep.get_tag('RADI').to_int()
             root = srep.get_tag('ROOT').get_value_bytes()
-            sig = reply.get_tag('SIG\x00').get_value_bytes()
+            sig = reply.get_tag('SIG').get_value_bytes()
             indx = reply.get_tag('INDX').to_int()
             path = reply.get_tag('PATH').get_value_bytes()
             pubk = dele.get_tag('PUBK').get_value_bytes()
@@ -310,7 +304,7 @@ class RoughtimeClient:
 
         # Verify signature of DELE with long term certificate.
         try:
-            self.pubkey.verify(dsig, RoughtimeServer.CERTIFICATE_CONTEXT + dele.get_value_bytes())
+            pubkey.verify(dsig, RoughtimeServer.CERTIFICATE_CONTEXT + dele.get_value_bytes())
         except:
             raise RoughtimeError('Verification of long term certificate signature failed.')
 
@@ -354,37 +348,48 @@ class RoughtimeClient:
         except:
             raise RoughtimeError('Bad DELE key signature.')
 
+        self.prev_replies.append((nonce, blind, data))
+        while len(self.prev_replies) > self.max_history_len:
+            self.prev_replies = self.prev_replies[1:]
+
         # Return results.
         ret = dict()
         ret['midp'] = midp
         ret['radi'] = radi
-        ret['prev_reply'] = prev_reply
-        ret['blind'] = blind
-        ret['nonce'] = nonce
-        ret['reply_data'] = data
         ret['datetime'] = datetime.datetime.utcfromtimestamp(midp / 1E6)
         timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S.%f')
         ret['prettytime'] = "%s UTC (+/- %.2f s)" % (timestr, radi / 1E6)
         return ret
 
-    @staticmethod
-    def verify_replies(replies):
+    def get_previous_replies(self):
         '''
-        Verifies replies from servers returned by this class.
-
-        Args:
-            replies (list): A list of replies returned by query, in chronological order.
+        Returns a list of previous replies recived by the instance.
 
         Returns:
-            ret (list): A list of invalid pairs. An empty list indicates that no replies appear to
-                    violate causality.
+            prev_replies (list): A list of tuples (bytes, bytes, bytes) containing a nonce, the
+                    blind used to generate the nonce, and the data received from the server in the
+                    reply. The list is in chronological order.
+        '''
+        return self.prev_replies
+
+    def verify_replies(self):
+        '''
+        Verifies replies from servers that have been received by the instance.
+
+        Returns:
+            ret (list): A list of pairs containing the indexes of any invalid pairs. An empty list
+                    indicates that no replies appear to violate causality.
         '''
         invalid_pairs = []
-        for i in range(len(replies)):
-            for k in range(i + 1, len(replies)):
-                t1 = replies[i]['midp'] - replies[i]['radi']
-                t2 = replies[k]['midp'] + replies[k]['radi']
-                if t1 > t2:
+        for i in range(len(self.prev_replies)):
+            packet_i = RoughtimePacket(packet=self.prev_replies[i][2])
+            midp_i = packet_i.get_tag('SREP').get_tag('MIDP').to_int()
+            radi_i = packet_i.get_tag('SREP').get_tag('RADI').to_int()
+            for k in range(i + 1, len(self.prev_replies)):
+                packet_k = RoughtimePacket(packet=self.prev_replies[k][2])
+                midp_k = packet_k.get_tag('SREP').get_tag('MIDP').to_int()
+                radi_k = packet_k.get_tag('SREP').get_tag('RADI').to_int()
+                if midp_i - radi_i > midp_k + radi_k:
                     invalid_pairs.append((i, k))
         return invalid_pairs
 
@@ -393,8 +398,9 @@ class RoughtimeTag:
     Represents a Roughtime tag in a Roughtime message.
 
     Args:
-        key (str): A Roughtime key. Must me less than or equal to four ASCII characters.
-        value (bytes): The value corresponding to the key.
+        key (str): A Roughtime key. Must me less than or equal to four ASCII characters. Values
+                shorter than four characters are padded with NULL characters.
+        value (bytes): The tag's value.
     '''
     def __init__(self, key, value=b''):
         if len(key) > 4:
@@ -568,6 +574,10 @@ class RoughtimePacket(RoughtimeTag):
         Return:
             RoughtimeTag or None.
         '''
+        if len(tag) > 4:
+            raise RoughtimeError('Invalid tag key length.')
+        while len(tag) < 4:
+            tag += '\x00'
         for t in self.tags:
             if t.get_tag_str() == tag:
                 return t
@@ -613,21 +623,18 @@ class RoughtimePacket(RoughtimeTag):
         return val
 
 if __name__ == '__main__':
-    google_server = RoughtimeClient('roughtime.sandbox.google.com', 2002,
+    cl = RoughtimeClient()
+    google_server = ('Google', 'roughtime.sandbox.google.com', 2002,
             'etPaaIxcBMY1oUeGpwvPMCJMwlRVNxv51KK/tktoJTQ=')
-    cloudflare_server = RoughtimeClient('roughtime.cloudflare.com', 2002,
+    cloudflare_server = ('Cloudflare', 'roughtime.cloudflare.com', 2002,
             'gD63hSj3ScS+wuOeGrubXlq35N1c5Lby/S+T7MNTjxo=')
-    int08h_server = RoughtimeClient('roughtime.int08h.com', 2002,
+    int08h_server = ('int08h', 'roughtime.int08h.com', 2002,
             'AW5uAoTSTDfG5NfY1bTh08GUnOqlRb+HVhbJ3ODJvsE=')
 
-    replies = []
-    replies.append(google_server.query())
-    print('Google:     %s' % replies[-1]['prettytime'])
-    replies.append(cloudflare_server.query(prev_reply=replies[-1]['reply_data']))
-    print('Cloudflare: %s' % replies[-1]['prettytime'])
-    replies.append(int08h_server.query(prev_reply=replies[-1]['reply_data']))
-    print('int08h:     %s' % replies[-1]['prettytime'])
-    verify = RoughtimeClient.verify_replies(replies)
+    for name, addr, port, pkey in [google_server, cloudflare_server, int08h_server]:
+        reply = cl.query(addr, port, pkey)
+        print('%s: %s' % (name, reply['prettytime']))
+    verify = cl.verify_replies()
     if len(verify) > 0:
         print('Invalid time replies detected!')
     else:
