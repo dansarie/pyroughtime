@@ -25,15 +25,13 @@ import socket
 import struct
 
 class RoughtimeError(Exception):
-    '''
-    Represents an error that has occured in the Roughtime client.
-    '''
+    'Represents an error that has occured in the Roughtime client.'
     def __init__(self, message):
         super(RoughtimeError, self).__init__(message)
 
-class RoughtimeServer:
+class RoughtimeClient:
     '''
-    Represents a Roughtime server that provides authenticated time replies.
+    Queries Roughtime servers for the current time and authenticates the replies.
 
     Args:
         address (str): The server address.
@@ -229,9 +227,7 @@ class RoughtimeTag:
         return RoughtimeTag.tag_str_to_uint32(self.key)
 
     def get_value_len(self):
-        '''
-        Returns the number of bytes in the tag's value.
-        '''
+        'Returns the number of bytes in the tag\'s value.'
         return len(self.get_value_bytes())
 
     def get_value_bytes(self):
@@ -419,11 +415,11 @@ class RoughtimePacket(RoughtimeTag):
         return val
 
 if __name__ == '__main__':
-    google_server = RoughtimeServer('roughtime.sandbox.google.com', 2002,
+    google_server = RoughtimeClient('roughtime.sandbox.google.com', 2002,
             'etPaaIxcBMY1oUeGpwvPMCJMwlRVNxv51KK/tktoJTQ=')
-    cloudflare_server = RoughtimeServer('roughtime.cloudflare.com', 2002,
+    cloudflare_server = RoughtimeClient('roughtime.cloudflare.com', 2002,
             'gD63hSj3ScS+wuOeGrubXlq35N1c5Lby/S+T7MNTjxo=')
-    int08h_server = RoughtimeServer('roughtime.int08h.com', 2002,
+    int08h_server = RoughtimeClient('roughtime.int08h.com', 2002,
             'AW5uAoTSTDfG5NfY1bTh08GUnOqlRb+HVhbJ3ODJvsE=')
 
     replies = []
@@ -433,7 +429,7 @@ if __name__ == '__main__':
     print('Cloudflare: %s UTC (+/- %.2fs)' % (replies[-1]['prettytime'], replies[-1]['radi'] / 1E6))
     replies.append(int08h_server.query(prev_reply=replies[-1]['reply_data']))
     print('int08h:     %s UTC (+/- %.2fs)' % (replies[-1]['prettytime'], replies[-1]['radi'] / 1E6))
-    verify = RoughtimeServer.verify_replies(replies)
+    verify = RoughtimeClient.verify_replies(replies)
     if len(verify) > 0:
         print('Invalid time replies detected!')
     else:
