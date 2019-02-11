@@ -126,10 +126,7 @@ class RoughtimeServer:
 
             srep = RoughtimePacket('SREP')
 
-            ha = hashlib.sha512()
-            ha.update(b'\x00')
-            ha.update(nonc)
-            root = RoughtimeTag('ROOT', ha.digest())
+            root = RoughtimeTag('ROOT', hashlib.sha512(b'\x00' + nonc).digest())
             srep.add_tag(root)
 
             midp = RoughtimeTag('MIDP')
@@ -313,10 +310,7 @@ class RoughtimeClient:
             raise RoughtimeError('MIDP outside delegated key validity time.')
 
         # Ensure that Merkle tree is correct and includes nonce.
-        ha = hashlib.sha512()
-        ha.update(b'\x00')
-        ha.update(nonce)
-        curr_hash = ha.digest()
+        curr_hash = hashlib.sha512(b'\x00' + nonce).digest()
 
         if len(path) % 64 != 0:
             raise RoughtimeError('PATH length not a multiple of 64.')
@@ -326,14 +320,9 @@ class RoughtimeClient:
         while len(path) > 0:
             ha = hashlib.sha512()
             if indx & 1 == 0:
-                ha.update(b'\x01')
-                ha.update(curr_hash)
-                ha.update(path[:64])
+                curr_hash = hashlib.sha512(b'\x01' + curr_hash + path[:64]).digest()
             else:
-                ha.update(b'\x01')
-                ha.update(path[:64])
-                ha.update(curr_hash)
-            curr_hash = ha.digest()
+                curr_hash = hashlib.sha512(b'\x01' + path[:64] + curr_hash).digest()
             path = path[64:]
 
         if indx != 0:
