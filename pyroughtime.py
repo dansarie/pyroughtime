@@ -24,6 +24,7 @@ import hashlib
 import os
 import socket
 import struct
+import threading
 import time
 
 class RoughtimeError(Exception):
@@ -64,7 +65,7 @@ class RoughtimeServer:
             raise RoughtimeError('CERT and pkey arguments are not a valid certificate pair.')
 
 
-    def run(self, ip, port):
+    def start(self, ip, port):
         '''
         Starts the Roughtime server.
 
@@ -72,23 +73,51 @@ class RoughtimeServer:
             ip (str): The IP address the server should bind to.
             port (int): The UDP port the server should bind to.
         '''
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((ip, port))
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind((ip, port))
+        self.sock.settimeout(0.001)
+        self.run = True
+        self.thread = threading.Thread(target=RoughtimeServer.__recv_thread, args=(self,))
+        self.thread.start()
 
-        while True:
-            data, addr = sock.recvfrom(1500)
-            if len(data) < 1024:
+    def stop(self):
+        if self.run == False:
+            return
+        self.run = False
+        self.thread.join()
+        self.sock.close()
+        self.thread = None
+        self.sock = None
 
+    @staticmethod
+    def __recv_thread(ref):
+        while ref.run:
+            try:
+                data, addr = ref.sock.recvfrom(1500)
+            except socket.timeout:
                 continue
-            request = RoughtimePacket(packet=data)
+
+            # Ignore requests shorter than 1024 bytes.
+            if len(data) < 1024:
+                continue
+
+            try:
+                request = RoughtimePacket(packet=data)
+            except:
+                continue
+
+            # Ensure request contains a proper nonce.
             if not request.contains_tag('NONC'):
                 continue
             nonc = request.get_tag('NONC').get_value_bytes()
             if len(nonc) != 64:
               continue
 
+            # Construct reply.
             reply = RoughtimePacket()
-            reply.add_tag(self.cert)
+            reply.add_tag(ref.cert)
+
+            # Single nonce Merkle tree.
             indx = RoughtimeTag('INDX')
             indx.set_value_uint32(0)
             reply.add_tag(indx)
@@ -107,20 +136,20 @@ class RoughtimeServer:
             srep.add_tag(midp)
 
             radi = RoughtimeTag('RADI')
-            radi.set_value_uint32(self.radi)
+            radi.set_value_uint32(ref.radi)
             srep.add_tag(radi)
             reply.add_tag(srep)
 
-            sig = RoughtimeTag('SIG', self.pkey.sign(
+            sig = RoughtimeTag('SIG', ref.pkey.sign(
                     RoughtimeServer.SIGNED_RESPONSE_CONTEXT + srep.get_value_bytes()))
             reply.add_tag(sig)
 
-            sock.sendto(reply.get_value_bytes(), addr)
+            ref.sock.sendto(reply.get_value_bytes(), addr)
 
     @staticmethod
     def create_key():
         '''
-        Generates a long-time key pair.
+        Generates a long-term key pair.
 
         Returns:
             priv (bytes): A base64 encoded ed25519 private key.
@@ -132,7 +161,7 @@ class RoughtimeServer:
     @staticmethod
     def create_delegate_key(priv, mint=None, maxt=None):
         '''
-        Generates a Roughtime delegate key signed by a long-time key.
+        Generates a Roughtime delegate key signed by a long-term key.
 
         Args:
             priv (bytes): A base64 encoded ed25519 private key.
@@ -172,14 +201,17 @@ class RoughtimeServer:
     @staticmethod
     def test_server():
         '''
-        Prints a long-term public key to the console and starts a Roughtime server listening on
-        127.0.0.1, port 2002 for testing.
+        Starts a Roughtime server listening on 127.0.0.1, port 2002 for testing.
+
+        Returns:
+            serv (RoughtimeServer): The server instance.
+            publ (bytes): The server's public long-term key.
         '''
         priv, publ = RoughtimeServer.create_key()
-        print('Public key: %s' % publ.decode('ascii'))
         cert, dpriv = RoughtimeServer.create_delegate_key(priv)
         serv = RoughtimeServer(cert, dpriv)
-        serv.run('127.0.0.1', 2002)
+        serv.start('127.0.0.1', 2002)
+        return serv, publ
 
 class RoughtimeClient:
     '''
@@ -195,7 +227,7 @@ class RoughtimeClient:
         self.port = port
         self.pubkey = ed25519.VerifyingKey(pubkey, encoding='base64')
 
-    def query(self, prev_reply=None):
+    def query(self, prev_reply=None, timeout=10):
         '''
         Sends a time query to the server and waits for a reply.
 
@@ -204,6 +236,7 @@ class RoughtimeClient:
                     It is used to construct a chain of nonces that can be used to create a
                     cryptographic proof of cheating. Just pass the 'reply_data' member of the dict
                     returned by a previous call to this method.
+            timeout (float): Time to wait for a reply from the server.
 
         Raises:
             RoughtimeError: On any error. The message will describe the specific error that
@@ -211,12 +244,13 @@ class RoughtimeClient:
 
         Returns:
             ret (dict): A dictionary with the following members:
-                    midp       - MIDP in milliseconds,
-                    radi       - RADI in milliseconds,
-                    prev_reply - the value passed as prev_reply when callin the method,
+                    midp       - midpoint (MIDP) in microseconds,
+                    radi       - accuracy (RADI) in microseconds,
+                    prev_reply - the value passed as prev_reply when calling the method,
                     blind      - a random blind value used to create the nonce,
                     nonce      - the nonce sent to the server,
                     reply_data - the raw data returned by the server,
+                    datetime   - a datetime object representing the returned midpoint,
                     prettytime - a string representing the returned time.
         '''
 
@@ -237,11 +271,18 @@ class RoughtimeClient:
         # Send query and wait for reply.
         ip_addr = socket.gethostbyname(self.address)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(0.001)
         sock.sendto(packet.get_value_bytes(), (ip_addr, self.port))
-        while True:
-            data, (repl_addr, repl_port) = sock.recvfrom(1500)
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < timeout:
+            try:
+                data, (repl_addr, repl_port) = sock.recvfrom(1500)
+            except socket.timeout:
+                continue
             if repl_addr == ip_addr and repl_port == self.port:
                 break
+        if time.monotonic() - start_time >= timeout:
+            raise RoughtimeError('Timeout while waiting for reply.')
         reply = RoughtimePacket(packet=data)
 
         # Get reply tags.
@@ -321,8 +362,9 @@ class RoughtimeClient:
         ret['blind'] = blind
         ret['nonce'] = nonce
         ret['reply_data'] = data
-        ret['prettytime'] = datetime.datetime.utcfromtimestamp(midp / 1E6) \
-            .strftime('%Y-%m-%d %H:%M:%S.%f')
+        ret['datetime'] = datetime.datetime.utcfromtimestamp(midp / 1E6)
+        timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S.%f')
+        ret['prettytime'] = "%s UTC (+/- %.2f s)" % (timestr, radi / 1E6)
         return ret
 
     @staticmethod
@@ -580,11 +622,11 @@ if __name__ == '__main__':
 
     replies = []
     replies.append(google_server.query())
-    print('Google:     %s UTC (+/- %.2fs)' % (replies[-1]['prettytime'], replies[-1]['radi'] / 1E6))
+    print('Google:     %s' % replies[-1]['prettytime'])
     replies.append(cloudflare_server.query(prev_reply=replies[-1]['reply_data']))
-    print('Cloudflare: %s UTC (+/- %.2fs)' % (replies[-1]['prettytime'], replies[-1]['radi'] / 1E6))
+    print('Cloudflare: %s' % replies[-1]['prettytime'])
     replies.append(int08h_server.query(prev_reply=replies[-1]['reply_data']))
-    print('int08h:     %s UTC (+/- %.2fs)' % (replies[-1]['prettytime'], replies[-1]['radi'] / 1E6))
+    print('int08h:     %s' % replies[-1]['prettytime'])
     verify = RoughtimeClient.verify_replies(replies)
     if len(verify) > 0:
         print('Invalid time replies detected!')
