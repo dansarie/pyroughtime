@@ -12,8 +12,8 @@ Quick Roughtime client implementation using the IETF draft at
 ## Example
 
 ```python
-from pyroughtime import RoughtimeServer
-google_server = RoughtimeServer('roughtime.sandbox.google.com', 2002, 'etPaaIxcBMY1oUeGpwvPMCJMwlRVNxv51KK/tktoJTQ=')
+from pyroughtime import RoughtimeClient
+google_server = RoughtimeClient('roughtime.sandbox.google.com', 2002, 'etPaaIxcBMY1oUeGpwvPMCJMwlRVNxv51KK/tktoJTQ=')
 reply = google_server.query()
 print(reply['prettytime'])
 ```
