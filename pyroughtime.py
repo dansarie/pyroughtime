@@ -64,7 +64,6 @@ class RoughtimeServer:
         except:
             raise RoughtimeError('CERT and pkey arguments are not a valid certificate pair.')
 
-
     def start(self, ip, port):
         '''
         Starts the Roughtime server.
@@ -91,6 +90,56 @@ class RoughtimeServer:
         self.sock = None
 
     @staticmethod
+    def __clp2(x):
+        'Returns the next power of two.'
+        x -= 1
+        x |= x >>  1
+        x |= x >>  2
+        x |= x >>  4
+        x |= x >>  8
+        x |= x >> 16
+        return x + 1
+
+    @staticmethod
+    def __construct_merkle(nonces, prev=None, order=None):
+        'Builds a Merkle tree.'
+        # First call:  and calculate order
+        if prev == None:
+            # Hash nonces.
+            nonces = [hashlib.sha512(b'\x00' + x).digest() for x in nonces]
+            # Calculate next power of two.
+            size = RoughtimeServer.__clp2(len(nonces))
+            # Extend nonce list to the next power of two.
+            nonces += [os.urandom(64) for x in range(size - len(nonces))]
+            # Calculate list order
+            order = 0
+            while size & 1 == 0:
+                order += 1
+                size >>= 1
+            return RoughtimeServer.__construct_merkle(nonces, [nonces], order)
+
+        if order == 0:
+            return prev
+
+        out = []
+        for n in range(1 << (order - 1)):
+            out.append(hashlib.sha512(b'\x01' + nonces[n * 2] + nonces[n * 2 + 1]).digest())
+
+        prev.append(out)
+        return RoughtimeServer.__construct_merkle(out, prev, order - 1)
+
+    @staticmethod
+    def __construct_merkle_path(merkle, index):
+        'Returns the Merkle tree path for a nonce index.'
+        out = b''
+        while len(merkle[0]) > 1:
+            #out.append(merkle[0][index ^ 1])
+            out += merkle[0][index ^ 1]
+            merkle = merkle[1:]
+            index >>= 1
+        return out
+
+    @staticmethod
     def __recv_thread(ref):
         while ref.run:
             try:
@@ -114,6 +163,10 @@ class RoughtimeServer:
             if len(nonc) != 64:
               continue
 
+            noncelist = [nonc]
+            merkle = RoughtimeServer.__construct_merkle(noncelist)
+            path_bytes = RoughtimeServer.__construct_merkle_path(merkle, 0)
+
             # Construct reply.
             reply = RoughtimePacket()
             reply.add_tag(ref.cert)
@@ -122,11 +175,13 @@ class RoughtimeServer:
             indx = RoughtimeTag('INDX')
             indx.set_value_uint32(0)
             reply.add_tag(indx)
-            reply.add_tag(RoughtimeTag('PATH'))
+            path = RoughtimeTag('PATH')
+            path.set_value_bytes(path_bytes)
+            reply.add_tag(path)
 
             srep = RoughtimePacket('SREP')
 
-            root = RoughtimeTag('ROOT', hashlib.sha512(b'\x00' + nonc).digest())
+            root = RoughtimeTag('ROOT', merkle[-1][0])
             srep.add_tag(root)
 
             midp = RoughtimeTag('MIDP')
@@ -323,6 +378,7 @@ class RoughtimeClient:
                 curr_hash = hashlib.sha512(b'\x01' + curr_hash + path[:64]).digest()
             else:
                 curr_hash = hashlib.sha512(b'\x01' + path[:64] + curr_hash).digest()
+            indx >>= 1
             path = path[64:]
 
         if indx != 0:
