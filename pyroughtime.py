@@ -133,7 +133,6 @@ class RoughtimeServer:
         'Returns the Merkle tree path for a nonce index.'
         out = b''
         while len(merkle[0]) > 1:
-            #out.append(merkle[0][index ^ 1])
             out += merkle[0][index ^ 1]
             merkle = merkle[1:]
             index >>= 1
