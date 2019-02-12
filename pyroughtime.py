@@ -21,9 +21,11 @@ import base64
 import ed25519
 import datetime
 import hashlib
+import json
 import os
 import socket
 import struct
+import sys
 import threading
 import time
 
@@ -697,20 +699,29 @@ class RoughtimePacket(RoughtimeTag):
         return val
 
 if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print('Usage:\n    %s ecosystem.json' % sys.argv[0])
+        sys.exit(1)
+    with open(sys.argv[1]) as f:
+        ecosystem = json.load(f)
     cl = RoughtimeClient()
-    google_server = ('Google', 'roughtime.sandbox.google.com', 2002,
-            'etPaaIxcBMY1oUeGpwvPMCJMwlRVNxv51KK/tktoJTQ=')
-    cloudflare_server = ('Cloudflare', 'roughtime.cloudflare.com', 2002,
-            'gD63hSj3ScS+wuOeGrubXlq35N1c5Lby/S+T7MNTjxo=')
-    int08h_server = ('int08h', 'roughtime.int08h.com', 2002,
-            'AW5uAoTSTDfG5NfY1bTh08GUnOqlRb+HVhbJ3ODJvsE=')
+    for server in ecosystem['servers']:
+        try:
+            if server['publicKeyType'] != 'ed25519' \
+                    or server['addresses'][0]['protocol'] != 'udp':
+                continue
+            addr, port = server['addresses'][0]['address'].split(':')
+            repl = cl.query(addr, int(port), server['publicKey'])
+            if len(server['name']) > 30:
+                space = ' '
+            else:
+                space = ' ' * (30 - len(server['name']))
+            print('%s:%s%s' % (server['name'], space, repl['prettytime']))
+        except:
+            continue
 
-    for name, addr, port, pkey in [google_server, cloudflare_server,
-            int08h_server]:
-        reply = cl.query(addr, port, pkey)
-        print('%s: %s' % (name, reply['prettytime']))
     verify = cl.verify_replies()
     if len(verify) > 0:
-        print('Invalid time replies detected!')
+        print('Inconsistent time replies detected!')
     else:
-        print('No invalid replies detected.')
+        print('No inconsistent replies detected.')

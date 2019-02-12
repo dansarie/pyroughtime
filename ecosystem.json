@@ -1,0 +1,59 @@
+{
+  "servers": [
+    {
+      "name": "Chainpoint-Roughtime",
+      "publicKeyType": "ed25519",
+      "publicKey": "bbT+RPS7zKX6w71ssPibzmwWqU9ffRV5oj2OresSmhE=",
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "roughtime.chainpoint.org:2002"
+        }
+      ]
+    },
+    {
+      "name": "Cloudflare-Roughtime",
+      "publicKeyType": "ed25519",
+      "publicKey": "gD63hSj3ScS+wuOeGrubXlq35N1c5Lby/S+T7MNTjxo=",
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "roughtime.cloudflare.com:2002"
+        }
+      ]
+    },
+    {
+      "name": "Google-Sandbox-Roughtime",
+      "publicKeyType": "ed25519",
+      "publicKey": "etPaaIxcBMY1oUeGpwvPMCJMwlRVNxv51KK/tktoJTQ=",
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "roughtime.sandbox.google.com:2002"
+        }
+      ]
+    },
+    {
+      "name": "int08h-Roughtime",
+      "publicKeyType": "ed25519",
+      "publicKey": "AW5uAoTSTDfG5NfY1bTh08GUnOqlRb+HVhbJ3ODJvsE=",
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "roughtime.int08h.com:2002"
+        }
+      ]
+    },
+    {
+      "name": "ticktock",
+      "publicKeyType": "ed25519",
+      "publicKey": "cj8GsiNlRkqiDElAeNMSBBMwrAl15hYPgX50+GWX/lA=",
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "ticktock.mixmin.net:5333"
+        }
+      ]
+    }
+  ]
+}
