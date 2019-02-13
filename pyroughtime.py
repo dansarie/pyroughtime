@@ -342,7 +342,8 @@ class RoughtimeClient:
                 continue
             if repl_addr == ip_addr and repl_port == port:
                 break
-        if time.monotonic() - start_time >= timeout:
+        rtt = time.monotonic() - start_time
+        if rtt >= timeout:
             raise RoughtimeError('Timeout while waiting for reply.')
         reply = RoughtimePacket(packet=data)
 
@@ -424,6 +425,7 @@ class RoughtimeClient:
         ret['datetime'] = datetime.datetime.utcfromtimestamp(midp / 1E6)
         timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S.%f')
         ret['prettytime'] = "%s UTC (+/- %.2f s)" % (timestr, radi / 1E6)
+        ret['rtt'] = rtt
         return ret
 
     def get_previous_replies(self):
@@ -712,11 +714,12 @@ if __name__ == '__main__':
                 continue
             addr, port = server['addresses'][0]['address'].split(':')
             repl = cl.query(addr, int(port), server['publicKey'])
-            if len(server['name']) > 30:
+            if len(server['name']) > 25:
                 space = ' '
             else:
-                space = ' ' * (30 - len(server['name']))
-            print('%s:%s%s' % (server['name'], space, repl['prettytime']))
+                space = ' ' * (25 - len(server['name']))
+            print('%s:%s%s (RTT: %6.1f ms)' % (server['name'], space,
+                    repl['prettytime'], repl['rtt'] * 1000))
         except:
             continue
 
