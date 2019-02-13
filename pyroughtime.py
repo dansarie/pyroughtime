@@ -701,13 +701,20 @@ class RoughtimePacket(RoughtimeTag):
         return val
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print('Usage:\n    %s ecosystem.json' % sys.argv[0])
+    if len(sys.argv) != 2 and len(sys.argv) != 4:
+        print('Usage:')
+        print('    %s ecosystem.json' % sys.argv[0])
+        print('    %s <address> <port> <b64key>' % sys.argv[0])
         sys.exit(1)
-    with open(sys.argv[1]) as f:
-        ecosystem = json.load(f)
     cl = RoughtimeClient()
-    for server in ecosystem['servers']:
+    if len(sys.argv) == 4:
+        repl = cl.query(sys.argv[1], int(sys.argv[2]), sys.argv[3])
+        print('%s (RTT: %.1f ms)' % (repl['prettytime'], repl['rtt'] * 1000))
+        sys.exit(0)
+
+    with open(sys.argv[1]) as f:
+        serverlist = json.load(f)['servers']
+    for server in serverlist:
         try:
             if server['publicKeyType'] != 'ed25519' \
                     or server['addresses'][0]['protocol'] != 'udp':
