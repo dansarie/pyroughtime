@@ -423,6 +423,9 @@ class RoughtimeClient:
         ret['midp'] = midp
         ret['radi'] = radi
         ret['datetime'] = datetime.datetime.utcfromtimestamp(midp / 1E6)
+        if ret['datetime'].year > 3000:
+            ret['datetime'] = datetime.datetime.fromordinal(678576 + (midp >> 40))
+            ret['datetime'] += datetime.timedelta(microseconds=midp&0xffffffffff)
         timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S.%f')
         ret['prettytime'] = "%s UTC (+/- %.2f s)" % (timestr, radi / 1E6)
         ret['rtt'] = rtt
