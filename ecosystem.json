@@ -54,6 +54,17 @@
           "address": "ticktock.mixmin.net:5333"
         }
       ]
+    },
+    {
+      "name": "Roughtime.se",
+      "publicKeyType": "ed25519",
+      "publicKey": "S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=",
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "roughtime.se:2002"
+        }
+      ]
     }
   ]
 }
