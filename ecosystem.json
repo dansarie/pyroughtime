@@ -45,6 +45,17 @@
       ]
     },
     {
+      "name": "roughtime.se",
+      "publicKeyType": "ed25519",
+      "publicKey": "S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=",
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "roughtime.se:2002"
+        }
+      ]
+    },
+    {
       "name": "ticktock",
       "publicKeyType": "ed25519",
       "publicKey": "cj8GsiNlRkqiDElAeNMSBBMwrAl15hYPgX50+GWX/lA=",
@@ -52,17 +63,6 @@
         {
           "protocol": "udp",
           "address": "ticktock.mixmin.net:5333"
-        }
-      ]
-    },
-    {
-      "name": "Roughtime.se",
-      "publicKeyType": "ed25519",
-      "publicKey": "S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=",
-      "addresses": [
-        {
-          "protocol": "udp",
-          "address": "roughtime.se:2002"
         }
       ]
     }
