@@ -291,6 +291,15 @@ class RoughtimeClient:
         self.prev_replies = []
         self.max_history_len = max_history_len
 
+    @staticmethod
+    def midp_to_datetime(midp):
+        ret = datetime.datetime.utcfromtimestamp(midp / 1E6)
+        if ret.year > 3000:
+            ret = datetime.datetime.fromordinal(678576 + (midp >> 40))
+            ret += datetime.timedelta(microseconds=midp&0xffffffffff)
+        return ret
+
+
     def query(self, address, port, pubkey, timeout=10):
         '''
         Sends a time query to the server and waits for a reply.
@@ -422,10 +431,7 @@ class RoughtimeClient:
         ret = dict()
         ret['midp'] = midp
         ret['radi'] = radi
-        ret['datetime'] = datetime.datetime.utcfromtimestamp(midp / 1E6)
-        if ret['datetime'].year > 3000:
-            ret['datetime'] = datetime.datetime.fromordinal(678576 + (midp >> 40))
-            ret['datetime'] += datetime.timedelta(microseconds=midp&0xffffffffff)
+        ret['datetime'] = RoughtimeClient.midp_to_datetime(midp)
         timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S.%f')
         ret['prettytime'] = "%s UTC (+/- %.2f s)" % (timestr, radi / 1E6)
         ret['rtt'] = rtt
@@ -455,12 +461,16 @@ class RoughtimeClient:
         invalid_pairs = []
         for i in range(len(self.prev_replies)):
             packet_i = RoughtimePacket(packet=self.prev_replies[i][2])
-            midp_i = packet_i.get_tag('SREP').get_tag('MIDP').to_int()
-            radi_i = packet_i.get_tag('SREP').get_tag('RADI').to_int()
+            midp_i = RoughtimeClient.midp_to_datetime(\
+                    packet_i.get_tag('SREP').get_tag('MIDP').to_int())
+            radi_i = datetime.timedelta(microseconds=packet_i.get_tag('SREP')\
+                    .get_tag('RADI').to_int())
             for k in range(i + 1, len(self.prev_replies)):
                 packet_k = RoughtimePacket(packet=self.prev_replies[k][2])
-                midp_k = packet_k.get_tag('SREP').get_tag('MIDP').to_int()
-                radi_k = packet_k.get_tag('SREP').get_tag('RADI').to_int()
+                midp_k = RoughtimeClient.midp_to_datetime(\
+                        packet_k.get_tag('SREP').get_tag('MIDP').to_int())
+                radi_k = datetime.timedelta(microseconds=\
+                        packet_k.get_tag('SREP').get_tag('RADI').to_int())
                 if midp_i - radi_i > midp_k + radi_k:
                     invalid_pairs.append((i, k))
         return invalid_pairs
