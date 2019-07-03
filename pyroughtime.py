@@ -300,7 +300,7 @@ class RoughtimeClient:
         return ret
 
 
-    def query(self, address, port, pubkey, timeout=10):
+    def query(self, address, port, pubkey, timeout=2):
         '''
         Sends a time query to the server and waits for a reply.
 
