@@ -433,7 +433,10 @@ class RoughtimeClient:
         ret['radi'] = radi
         ret['datetime'] = RoughtimeClient.midp_to_datetime(midp)
         timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S.%f')
-        ret['prettytime'] = "%s UTC (+/- %.2f s)" % (timestr, radi / 1E6)
+        if radi < 10000:
+            ret['prettytime'] = "%s UTC (+/- %.3f ms)" % (timestr, radi / 1E3)
+        else:
+            ret['prettytime'] = "%s UTC (+/- %.3f  s)" % (timestr, radi / 1E6)
         ret['rtt'] = rtt
         return ret
 
