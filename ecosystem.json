@@ -4,6 +4,7 @@
       "name": "Chainpoint-Roughtime",
       "publicKeyType": "ed25519",
       "publicKey": "bbT+RPS7zKX6w71ssPibzmwWqU9ffRV5oj2OresSmhE=",
+      "newtree": false,
       "addresses": [
         {
           "protocol": "udp",
@@ -15,6 +16,7 @@
       "name": "Cloudflare-Roughtime",
       "publicKeyType": "ed25519",
       "publicKey": "gD63hSj3ScS+wuOeGrubXlq35N1c5Lby/S+T7MNTjxo=",
+      "newtree": false,
       "addresses": [
         {
           "protocol": "udp",
@@ -26,6 +28,7 @@
       "name": "Google-Sandbox-Roughtime",
       "publicKeyType": "ed25519",
       "publicKey": "etPaaIxcBMY1oUeGpwvPMCJMwlRVNxv51KK/tktoJTQ=",
+      "newtree": false,
       "addresses": [
         {
           "protocol": "udp",
@@ -37,6 +40,7 @@
       "name": "int08h-Roughtime",
       "publicKeyType": "ed25519",
       "publicKey": "AW5uAoTSTDfG5NfY1bTh08GUnOqlRb+HVhbJ3ODJvsE=",
+      "newtree": false,
       "addresses": [
         {
           "protocol": "udp",
@@ -59,6 +63,7 @@
       "name": "ticktock",
       "publicKeyType": "ed25519",
       "publicKey": "cj8GsiNlRkqiDElAeNMSBBMwrAl15hYPgX50+GWX/lA=",
+      "newtree": false,
       "addresses": [
         {
           "protocol": "udp",
