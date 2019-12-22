@@ -305,10 +305,12 @@ class RoughtimeClient:
 
     @staticmethod
     def midp_to_datetime(midp):
-        ret = datetime.datetime.utcfromtimestamp(midp / 1E6)
-        if ret.year > 3000:
-            ret = datetime.datetime.fromordinal(678576 + (midp >> 40))
-            ret += datetime.timedelta(microseconds=midp&0xffffffffff)
+        if midp == 0xffffffffffffffff:
+            return None
+        if midp < 30000000000000000:
+            return datetime.datetime.utcfromtimestamp(midp / 1E6)
+        ret = datetime.datetime.fromordinal(678576 + (midp >> 40))
+        ret += datetime.timedelta(microseconds=midp&0xffffffffff)
         return ret
 
 
@@ -336,6 +338,12 @@ class RoughtimeClient:
                     datetime   - a datetime object representing the returned
                                  midpoint,
                     prettytime - a string representing the returned time.
+                    mint       - a datetime object representing the start of
+                                 validity for the delegate key.
+                    maxt       - a datetime object representing the end of
+                                 validity for the delegate key.
+                    pathlen    - the length of the Merkle tree path sent in
+                                 the server's reply (0 <= pathlen <= 32).
         '''
 
         pubkey = ed25519.VerifyingKey(pubkey, encoding='base64')
@@ -417,7 +425,8 @@ class RoughtimeClient:
         if len(path) % node_size != 0:
             raise RoughtimeError('PATH length not a multiple of %d.' \
                     % node_size)
-        if len(path) / node_size > 32:
+        pathlen = len(path) / node_size
+        if pathlen > 32:
             raise RoughtimeError('Too many paths in Merkle tree.')
 
         while len(path) > 0:
@@ -460,6 +469,9 @@ class RoughtimeClient:
         else:
             ret['prettytime'] = "%s UTC (+/- %.3f  s)" % (timestr, radi / 1E6)
         ret['rtt'] = rtt
+        ret['mint'] = RoughtimeClient.midp_to_datetime(mint)
+        ret['maxt'] = RoughtimeClient.midp_to_datetime(maxt)
+        ret['pathlen'] = pathlen
         return ret
 
     def get_previous_replies(self):
@@ -750,29 +762,36 @@ if __name__ == '__main__':
     if len(sys.argv) == 4:
         repl = cl.query(sys.argv[1], int(sys.argv[2]), sys.argv[3])
         print('%s (RTT: %.1f ms)' % (repl['prettytime'], repl['rtt'] * 1000))
+        print('Delegate key validity start: %s' % repl['mint'].strftime('%Y-%m-%d %H:%M:%S.%f'))
+        if repl['maxt'] is None:
+            print('Delegate key validity end:   indefinite')
+        else:
+            print('Delegate key validity end:   %s' % repl['maxt'].strftime('%Y-%m-%d %H:%M:%S.%f'))
+        print ('Merkle tree path length: %d' % repl['pathlen'])
         sys.exit(0)
 
     with open(sys.argv[1]) as f:
         serverlist = json.load(f)['servers']
     for server in serverlist:
+        if server['publicKeyType'] != 'ed25519' \
+                or server['addresses'][0]['protocol'] != 'udp':
+            continue
+        if not 'newtree' in server:
+            newtree = True
+        else:
+            newtree = server['newtree']
+        addr, port = server['addresses'][0]['address'].split(':')
+        if len(server['name']) > 25:
+            space = ' '
+        else:
+            space = ' ' * (25 - len(server['name']))
         try:
-            if server['publicKeyType'] != 'ed25519' \
-                    or server['addresses'][0]['protocol'] != 'udp':
-                continue
-            if not 'newtree' in server:
-                newtree = True
-            else:
-                newtree = server['newtree']
-            addr, port = server['addresses'][0]['address'].split(':')
             repl = cl.query(addr, int(port), server['publicKey'],
                     newtree=newtree)
-            if len(server['name']) > 25:
-                space = ' '
-            else:
-                space = ' ' * (25 - len(server['name']))
             print('%s:%s%s (RTT: %6.1f ms)' % (server['name'], space,
                     repl['prettytime'], repl['rtt'] * 1000))
-        except:
+        except Exception as ex:
+            print('%s:%sException: %s' % (server['name'], space, ex))
             continue
 
     verify = cl.verify_replies()
