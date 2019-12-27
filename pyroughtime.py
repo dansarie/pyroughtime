@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import argparse
 import base64
 import ed25519
 import datetime
@@ -753,31 +754,50 @@ class RoughtimePacket(RoughtimeTag):
         return val
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2 and len(sys.argv) != 4:
-        print('Usage:')
-        print('    %s ecosystem.json' % sys.argv[0])
-        print('    %s <address> <port> <b64key>' % sys.argv[0])
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Query Roughtime servers '
+            'for the current time and print results. This utility can be used '
+            'to query either a single Roughtime server specified on the '
+            'command line, or a number of servers listed in a JSON file.')
+
+    parser.add_argument('-o', '--oldtree', action='store_true',
+            help='validate replies using old style Merkle tree by default')
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-s', nargs=3,
+            metavar=('address', 'port', 'b64key'),
+            help="query a single server")
+    group.add_argument('-l', metavar='file',
+            help="query servers listed in a JSON file")
+
+    args = parser.parse_args()
+
     cl = RoughtimeClient()
-    if len(sys.argv) == 4:
-        repl = cl.query(sys.argv[1], int(sys.argv[2]), sys.argv[3])
+
+    # Query a single server.
+    if args.s is not None:
+        repl = cl.query(args.s[0], int(args.s[1]), args.s[2],
+                newtree=not args.oldtree)
         print('%s (RTT: %.1f ms)' % (repl['prettytime'], repl['rtt'] * 1000))
-        print('Delegate key validity start: %s' % repl['mint'].strftime('%Y-%m-%d %H:%M:%S.%f'))
+        print('Delegate key validity start: %s' %
+                repl['mint'].strftime('%Y-%m-%d %H:%M:%S.%f'))
         if repl['maxt'] is None:
             print('Delegate key validity end:   indefinite')
         else:
-            print('Delegate key validity end:   %s' % repl['maxt'].strftime('%Y-%m-%d %H:%M:%S.%f'))
+            print('Delegate key validity end:   %s' %
+                    repl['maxt'].strftime('%Y-%m-%d %H:%M:%S.%f'))
         print ('Merkle tree path length: %d' % repl['pathlen'])
         sys.exit(0)
 
-    with open(sys.argv[1]) as f:
+
+    # Query a list of servers in a JSON file.
+    with open(args.l) as f:
         serverlist = json.load(f)['servers']
     for server in serverlist:
         if server['publicKeyType'] != 'ed25519' \
                 or server['addresses'][0]['protocol'] != 'udp':
             continue
         if not 'newtree' in server:
-            newtree = True
+            newtree = not args.oldtree
         else:
             newtree = server['newtree']
         addr, port = server['addresses'][0]['address'].split(':')
