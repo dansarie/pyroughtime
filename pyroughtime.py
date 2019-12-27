@@ -362,20 +362,39 @@ class RoughtimeClient:
         packet.add_tag(RoughtimeTag('NONC', nonce))
         packet.add_padding()
 
-        # Send query and wait for reply.
-        ip_addr = socket.gethostbyname(address)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(0.001)
-        sock.sendto(packet.get_value_bytes(), (ip_addr, port))
-        start_time = time.monotonic()
-        while time.monotonic() - start_time < timeout:
+        # Try all available IP addresses.
+        for family, type_, proto, canonname, sockaddr in [x for x in
+                socket.getaddrinfo(address, port)
+                if x[1] is socket.SOCK_DGRAM]:
+
+            # Send query.
+            sock = socket.socket(family, type_)
+            sock.settimeout(0.001)
             try:
-                data, (repl_addr, repl_port) = sock.recvfrom(1500)
-            except socket.timeout:
+                sock.sendto(packet.get_value_bytes(), (sockaddr[0], sockaddr[1]))
+            except Exception as ex:
+                # Try next IP on failure.
+                sock.close()
                 continue
-            if repl_addr == ip_addr and repl_port == port:
-                break
-        rtt = time.monotonic() - start_time
+
+            # Wait for reply
+            start_time = time.monotonic()
+            while time.monotonic() - start_time < timeout:
+                try:
+                    data, repl = sock.recvfrom(1500)
+                    repl_addr = repl[0]
+                    repl_port = repl[1]
+                except socket.timeout:
+                    continue
+                if repl_addr == sockaddr[0] and repl_port == sockaddr[1]:
+                    break
+            rtt = time.monotonic() - start_time
+            sock.close()
+            if rtt >= timeout:
+                # Try next IP on timeout.
+                continue
+            # Break out of loop if successful.
+            break
         if rtt >= timeout:
             raise RoughtimeError('Timeout while waiting for reply.')
         reply = RoughtimePacket(packet=data)
