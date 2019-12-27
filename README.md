@@ -26,17 +26,19 @@ print(google_reply['prettytime'])
 
 ### From console
 ```console
-$ ./pyroughtime.py ecosystem.json
-Chainpoint-Roughtime:     2019-07-08 19:03:01.484444 UTC (+/- 1.000  s) (RTT:  149.3 ms)
-Cloudflare-Roughtime:     2019-07-08 19:03:01.590000 UTC (+/- 1.000  s) (RTT:    6.1 ms)
-Google-Sandbox-Roughtime: 2019-07-08 19:03:01.607248 UTC (+/- 1.000  s) (RTT:   13.3 ms)
-int08h-Roughtime:         2019-07-08 19:03:01.690529 UTC (+/- 1.000  s) (RTT:  159.7 ms)
-roughtime.se:             2019-07-08 19:03:01.799910 UTC (+/- 0.001 ms) (RTT:    6.4 ms)
-ticktock:                 2019-07-08 19:03:01.851144 UTC (+/- 1.000  s) (RTT:   61.4 ms)
+$ ./pyroughtime.py -l ecosystem.json
+Chainpoint-Roughtime:     2019-12-27 18:39:07.035450 UTC (+/- 1.000  s) (RTT:  236.5 ms)
+Cloudflare-Roughtime:     2019-12-27 18:39:07.249000 UTC (+/- 1.000  s) (RTT:   16.6 ms)
+Google-Sandbox-Roughtime: 2019-12-27 18:39:07.282948 UTC (+/- 1.000  s) (RTT:   12.4 ms)
+int08h-Roughtime:         2019-12-27 18:39:07.375952 UTC (+/- 1.000  s) (RTT:  193.2 ms)
+roughtime.se:             2019-12-27 18:39:07.535958 UTC (+/- 0.000 ms) (RTT:    4.5 ms)
+ticktock:                 2019-12-27 18:39:07.573947 UTC (+/- 1.000  s) (RTT:   48.2 ms)
 No inconsistent replies detected.
-$ ./pyroughtime.py roughtime.se 2002 S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=
-2019-07-08 19:03:04.584587 UTC (+/- 0.001 ms) (RTT: 7.8 ms)
-
+$ ./pyroughtime.py -s roughtime.se 2002 S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=
+2019-12-27 18:39:37.608463 UTC (+/- 0.000 ms) (RTT: 5.0 ms)
+Delegate key validity start: 2019-12-22 00:00:00.000000
+Delegate key validity end:   2020-12-31 00:00:00.000000
+Merkle tree path length: 0
 ```
 
 ## License
