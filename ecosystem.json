@@ -72,6 +72,18 @@
       ]
     },
     {
+      "name": "sjwheel",
+      "publicKeyType": "ed25519",
+      "publicKey": "4dq0SCJOPeES7DayXwqVs0936BfATfQp5ZMiRpFV60w=",
+      "newtree": false,
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "roughtime-cn.sjwheel.net:2002"
+        }
+      ]
+    },
+    {
       "name": "ticktock",
       "publicKeyType": "ed25519",
       "publicKey": "cj8GsiNlRkqiDElAeNMSBBMwrAl15hYPgX50+GWX/lA=",
