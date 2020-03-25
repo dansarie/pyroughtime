@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import argparse
 import base64
 import ed25519
 import datetime
@@ -112,7 +113,7 @@ class RoughtimeServer:
         # First call:  and calculate order
         if prev == None:
             # Hash nonces.
-            nonces = [hashlib.sha512(b'\x00' + x).digest() for x in nonces]
+            nonces = [hashlib.sha512(b'\x00' + x).digest()[:32] for x in nonces]
             # Calculate next power of two.
             size = RoughtimeServer.__clp2(len(nonces))
             # Extend nonce list to the next power of two.
@@ -130,7 +131,7 @@ class RoughtimeServer:
         out = []
         for n in range(1 << (order - 1)):
             out.append(hashlib.sha512(b'\x01' + nonces[n * 2]
-                    + nonces[n * 2 + 1]).digest())
+                    + nonces[n * 2 + 1]).digest()[:32])
 
         prev.append(out)
         return RoughtimeServer.__construct_merkle(out, prev, order - 1)
@@ -144,6 +145,15 @@ class RoughtimeServer:
             merkle = merkle[1:]
             index >>= 1
         return out
+
+    @staticmethod
+    def __datetime_to_timestamp(dt):
+        timestamp = (dt.date() - datetime.date(1858, 11, 17)).days << 40
+        timestamp += dt.time().hour * 3600000000
+        timestamp += dt.time().minute * 60000000
+        timestamp += dt.time().second * 1000000
+        timestamp += dt.time().microsecond
+        return timestamp
 
     @staticmethod
     def __recv_thread(ref):
@@ -191,7 +201,8 @@ class RoughtimeServer:
             srep.add_tag(root)
 
             midp = RoughtimeTag('MIDP')
-            midp.set_value_uint64(int(time.time() * 1000000))
+            midp.set_value_uint64(RoughtimeServer.__datetime_to_timestamp(\
+                    datetime.datetime.now()))
             srep.add_tag(midp)
 
             radi = RoughtimeTag('RADI')
@@ -236,9 +247,11 @@ class RoughtimeServer:
             dpriv (bytes): A base64 encoded ed25519 private key.
         '''
         if mint == None:
-            mint = int(time.time() * 1000000)
+            mint = RoughtimeServer.__datetime_to_timestamp(\
+                    datetime.datetime.now())
         if maxt == None or maxt <= mint:
-            maxt = int(mint + 30 * 24 * 3600 * 1000000)
+            maxt = RoughtimeServer.__datetime_to_timestamp(\
+                    datetime.datetime.now() + datetime.timedelta(days=30))
         priv = ed25519.SigningKey(priv, encoding='base64')
         dpriv, dpubl = ed25519.create_keypair()
         mint_tag = RoughtimeTag('MINT')
@@ -291,7 +304,18 @@ class RoughtimeClient:
         self.prev_replies = []
         self.max_history_len = max_history_len
 
-    def query(self, address, port, pubkey, timeout=10):
+    @staticmethod
+    def midp_to_datetime(midp):
+        if midp == 0xffffffffffffffff:
+            return None
+        if midp < 30000000000000000:
+            return datetime.datetime.utcfromtimestamp(midp / 1E6)
+        ret = datetime.datetime.fromordinal(678576 + (midp >> 40))
+        ret += datetime.timedelta(microseconds=midp&0xffffffffff)
+        return ret
+
+
+    def query(self, address, port, pubkey, timeout=2, newtree=True):
         '''
         Sends a time query to the server and waits for a reply.
 
@@ -300,6 +324,9 @@ class RoughtimeClient:
             port (int): The server port.
             pubkey (str): The server's public key in base64 format.
             timeout (float): Time to wait for a reply from the server.
+            newtree (boolean): True if the server returns 32 byte Merkle tree
+                    node values in PATH and ROOT. False if it returns 64 byte
+                    values in those tags.
 
         Raises:
             RoughtimeError: On any error. The message will describe the
@@ -312,6 +339,12 @@ class RoughtimeClient:
                     datetime   - a datetime object representing the returned
                                  midpoint,
                     prettytime - a string representing the returned time.
+                    mint       - a datetime object representing the start of
+                                 validity for the delegate key.
+                    maxt       - a datetime object representing the end of
+                                 validity for the delegate key.
+                    pathlen    - the length of the Merkle tree path sent in
+                                 the server's reply (0 <= pathlen <= 32).
         '''
 
         pubkey = ed25519.VerifyingKey(pubkey, encoding='base64')
@@ -329,20 +362,39 @@ class RoughtimeClient:
         packet.add_tag(RoughtimeTag('NONC', nonce))
         packet.add_padding()
 
-        # Send query and wait for reply.
-        ip_addr = socket.gethostbyname(address)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(0.001)
-        sock.sendto(packet.get_value_bytes(), (ip_addr, port))
-        start_time = time.monotonic()
-        while time.monotonic() - start_time < timeout:
+        # Try all available IP addresses.
+        for family, type_, proto, canonname, sockaddr in [x for x in
+                socket.getaddrinfo(address, port)
+                if x[1] is socket.SOCK_DGRAM]:
+
+            # Send query.
+            sock = socket.socket(family, type_)
+            sock.settimeout(0.001)
             try:
-                data, (repl_addr, repl_port) = sock.recvfrom(1500)
-            except socket.timeout:
+                sock.sendto(packet.get_value_bytes(), (sockaddr[0], sockaddr[1]))
+            except Exception as ex:
+                # Try next IP on failure.
+                sock.close()
                 continue
-            if repl_addr == ip_addr and repl_port == port:
-                break
-        rtt = time.monotonic() - start_time
+
+            # Wait for reply
+            start_time = time.monotonic()
+            while time.monotonic() - start_time < timeout:
+                try:
+                    data, repl = sock.recvfrom(1500)
+                    repl_addr = repl[0]
+                    repl_port = repl[1]
+                except socket.timeout:
+                    continue
+                if repl_addr == sockaddr[0] and repl_port == sockaddr[1]:
+                    break
+            rtt = time.monotonic() - start_time
+            sock.close()
+            if rtt >= timeout:
+                # Try next IP on timeout.
+                continue
+            # Break out of loop if successful.
+            break
         if rtt >= timeout:
             raise RoughtimeError('Timeout while waiting for reply.')
         reply = RoughtimePacket(packet=data)
@@ -382,24 +434,32 @@ class RoughtimeClient:
         if mint > midp or maxt < midp:
             raise RoughtimeError('MIDP outside delegated key validity time.')
 
-        # Ensure that Merkle tree is correct and includes nonce.
-        curr_hash = hashlib.sha512(b'\x00' + nonce).digest()
+        if newtree:
+            node_size = 32
+        else:
+            node_size = 64
 
-        if len(path) % 64 != 0:
-            raise RoughtimeError('PATH length not a multiple of 64.')
-        if len(path) / 64 > 32:
+        # Ensure that Merkle tree is correct and includes nonce.
+        curr_hash = hashlib.sha512(b'\x00' + nonce).digest()[:node_size]
+
+        if len(path) % node_size != 0:
+            raise RoughtimeError('PATH length not a multiple of %d.' \
+                    % node_size)
+        pathlen = len(path) / node_size
+        if pathlen > 32:
             raise RoughtimeError('Too many paths in Merkle tree.')
 
         while len(path) > 0:
             ha = hashlib.sha512()
             if indx & 1 == 0:
                 curr_hash = hashlib.sha512(b'\x01' + curr_hash
-                        + path[:64]).digest()
+                        + path[:node_size]).digest()
             else:
-                curr_hash = hashlib.sha512(b'\x01' + path[:64]
+                curr_hash = hashlib.sha512(b'\x01' + path[:node_size]
                         + curr_hash).digest()
+            curr_hash = curr_hash[:node_size]
+            path = path[node_size:]
             indx >>= 1
-            path = path[64:]
 
         if indx != 0:
             raise RoughtimeError('INDX not zero after traversing PATH.')
@@ -422,13 +482,16 @@ class RoughtimeClient:
         ret = dict()
         ret['midp'] = midp
         ret['radi'] = radi
-        ret['datetime'] = datetime.datetime.utcfromtimestamp(midp / 1E6)
-        if ret['datetime'].year > 3000:
-            ret['datetime'] = datetime.datetime.fromordinal(678576 + (midp >> 40))
-            ret['datetime'] += datetime.timedelta(microseconds=midp&0xffffffffff)
+        ret['datetime'] = RoughtimeClient.midp_to_datetime(midp)
         timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S.%f')
-        ret['prettytime'] = "%s UTC (+/- %.2f s)" % (timestr, radi / 1E6)
+        if radi < 10000:
+            ret['prettytime'] = "%s UTC (+/- %.3f ms)" % (timestr, radi / 1E3)
+        else:
+            ret['prettytime'] = "%s UTC (+/- %.3f  s)" % (timestr, radi / 1E6)
         ret['rtt'] = rtt
+        ret['mint'] = RoughtimeClient.midp_to_datetime(mint)
+        ret['maxt'] = RoughtimeClient.midp_to_datetime(maxt)
+        ret['pathlen'] = pathlen
         return ret
 
     def get_previous_replies(self):
@@ -455,12 +518,16 @@ class RoughtimeClient:
         invalid_pairs = []
         for i in range(len(self.prev_replies)):
             packet_i = RoughtimePacket(packet=self.prev_replies[i][2])
-            midp_i = packet_i.get_tag('SREP').get_tag('MIDP').to_int()
-            radi_i = packet_i.get_tag('SREP').get_tag('RADI').to_int()
+            midp_i = RoughtimeClient.midp_to_datetime(\
+                    packet_i.get_tag('SREP').get_tag('MIDP').to_int())
+            radi_i = datetime.timedelta(microseconds=packet_i.get_tag('SREP')\
+                    .get_tag('RADI').to_int())
             for k in range(i + 1, len(self.prev_replies)):
                 packet_k = RoughtimePacket(packet=self.prev_replies[k][2])
-                midp_k = packet_k.get_tag('SREP').get_tag('MIDP').to_int()
-                radi_k = packet_k.get_tag('SREP').get_tag('RADI').to_int()
+                midp_k = RoughtimeClient.midp_to_datetime(\
+                        packet_k.get_tag('SREP').get_tag('MIDP').to_int())
+                radi_k = datetime.timedelta(microseconds=\
+                        packet_k.get_tag('SREP').get_tag('RADI').to_int())
                 if midp_i - radi_i > midp_k + radi_k:
                     invalid_pairs.append((i, k))
         return invalid_pairs
@@ -596,7 +663,7 @@ class RoughtimePacket(RoughtimeTag):
             value = packet[offset:end]
 
             leaf_tags = ['SIG\x00', 'INDX', 'PATH', 'ROOT', 'MIDP', 'RADI',
-                    'PAD\xff', 'NONC', 'MINT', 'MAXT', 'PUBK']
+                    'PAD\x00', 'PAD\xff', 'NONC', 'MINT', 'MAXT', 'PUBK']
             parent_tags = ['SREP', 'CERT', 'DELE']
             if self.contains_tag(key):
                 raise RoughtimeError('Encountered duplicate tag: %s' % key)
@@ -695,6 +762,8 @@ class RoughtimePacket(RoughtimeTag):
         if packetlen >= 1024:
             return
         padlen = 1016 - packetlen
+        # Transmit "PAD\xff" instead of "PAD" for compatibility with older
+        # servers that do not properly ignore unknown tags in queries.
         self.add_tag(RoughtimeTag('PAD\xff', b'\x00' * padlen))
 
     @staticmethod
@@ -704,33 +773,64 @@ class RoughtimePacket(RoughtimeTag):
         return val
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2 and len(sys.argv) != 4:
-        print('Usage:')
-        print('    %s ecosystem.json' % sys.argv[0])
-        print('    %s <address> <port> <b64key>' % sys.argv[0])
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Query Roughtime servers '
+            'for the current time and print results. This utility can be used '
+            'to query either a single Roughtime server specified on the '
+            'command line, or a number of servers listed in a JSON file.')
+
+    parser.add_argument('-o', '--oldtree', action='store_true',
+            help='validate replies using old style Merkle tree by default')
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-s', nargs=3,
+            metavar=('address', 'port', 'b64key'),
+            help="query a single server")
+    group.add_argument('-l', metavar='file',
+            help="query servers listed in a JSON file")
+
+    args = parser.parse_args()
+
     cl = RoughtimeClient()
-    if len(sys.argv) == 4:
-        repl = cl.query(sys.argv[1], int(sys.argv[2]), sys.argv[3])
+
+    # Query a single server.
+    if args.s is not None:
+        repl = cl.query(args.s[0], int(args.s[1]), args.s[2],
+                newtree=not args.oldtree)
         print('%s (RTT: %.1f ms)' % (repl['prettytime'], repl['rtt'] * 1000))
+        print('Delegate key validity start: %s' %
+                repl['mint'].strftime('%Y-%m-%d %H:%M:%S.%f'))
+        if repl['maxt'] is None:
+            print('Delegate key validity end:   indefinite')
+        else:
+            print('Delegate key validity end:   %s' %
+                    repl['maxt'].strftime('%Y-%m-%d %H:%M:%S.%f'))
+        print ('Merkle tree path length: %d' % repl['pathlen'])
         sys.exit(0)
 
-    with open(sys.argv[1]) as f:
+
+    # Query a list of servers in a JSON file.
+    with open(args.l) as f:
         serverlist = json.load(f)['servers']
     for server in serverlist:
+        if server['publicKeyType'] != 'ed25519' \
+                or server['addresses'][0]['protocol'] != 'udp':
+            continue
+        if not 'newtree' in server:
+            newtree = not args.oldtree
+        else:
+            newtree = server['newtree']
+        addr, port = server['addresses'][0]['address'].split(':')
+        if len(server['name']) > 25:
+            space = ' '
+        else:
+            space = ' ' * (25 - len(server['name']))
         try:
-            if server['publicKeyType'] != 'ed25519' \
-                    or server['addresses'][0]['protocol'] != 'udp':
-                continue
-            addr, port = server['addresses'][0]['address'].split(':')
-            repl = cl.query(addr, int(port), server['publicKey'])
-            if len(server['name']) > 25:
-                space = ' '
-            else:
-                space = ' ' * (25 - len(server['name']))
+            repl = cl.query(addr, int(port), server['publicKey'],
+                    newtree=newtree)
             print('%s:%s%s (RTT: %6.1f ms)' % (server['name'], space,
                     repl['prettytime'], repl['rtt'] * 1000))
-        except:
+        except Exception as ex:
+            print('%s:%sException: %s' % (server['name'], space, ex))
             continue
 
     verify = cl.verify_replies()
