@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # pyroughtime
-# Copyright (C) 2019 Marcus Dansarie <marcus@dansarie.se>
+# Copyright (C) 2019-2020 Marcus Dansarie <marcus@dansarie.se>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -314,61 +314,11 @@ class RoughtimeClient:
         ret += datetime.timedelta(microseconds=midp&0xffffffffff)
         return ret
 
-
-    def query(self, address, port, pubkey, timeout=2, newtree=True):
-        '''
-        Sends a time query to the server and waits for a reply.
-
-        Args:
-            address (str): The server address.
-            port (int): The server port.
-            pubkey (str): The server's public key in base64 format.
-            timeout (float): Time to wait for a reply from the server.
-            newtree (boolean): True if the server returns 32 byte Merkle tree
-                    node values in PATH and ROOT. False if it returns 64 byte
-                    values in those tags.
-
-        Raises:
-            RoughtimeError: On any error. The message will describe the
-                    specific error that occurred.
-
-        Returns:
-            ret (dict): A dictionary with the following members:
-                    midp       - midpoint (MIDP) in microseconds,
-                    radi       - accuracy (RADI) in microseconds,
-                    datetime   - a datetime object representing the returned
-                                 midpoint,
-                    prettytime - a string representing the returned time.
-                    mint       - a datetime object representing the start of
-                                 validity for the delegate key.
-                    maxt       - a datetime object representing the end of
-                                 validity for the delegate key.
-                    pathlen    - the length of the Merkle tree path sent in
-                                 the server's reply (0 <= pathlen <= 32).
-        '''
-
-        pubkey = ed25519.VerifyingKey(pubkey, encoding='base64')
-
-        # Generate nonce.
-        blind = os.urandom(64)
-        ha = hashlib.sha512()
-        if len(self.prev_replies) > 0:
-            ha.update(self.prev_replies[-1][2])
-        ha.update(blind)
-        nonce = ha.digest()
-
-        # Create query packet.
-        packet = RoughtimePacket()
-        packet.add_tag(RoughtimeTag('NONC', nonce))
-        packet.add_padding()
-
-        # Try all available IP addresses.
-        for family, type_, proto, canonname, sockaddr in [x for x in
-                socket.getaddrinfo(address, port)
-                if x[1] is socket.SOCK_DGRAM]:
-
-            # Send query.
-            sock = socket.socket(family, type_)
+    @staticmethod
+    def __udp_query(address, port, packet, timeout):
+        for family, type_, proto, canonname, sockaddr in \
+                socket.getaddrinfo(address, port, type=socket.SOCK_DGRAM):
+            sock = socket.socket(family, socket.SOCK_DGRAM)
             sock.settimeout(0.001)
             try:
                 sock.sendto(packet.get_value_bytes(), (sockaddr[0], sockaddr[1]))
@@ -398,6 +348,108 @@ class RoughtimeClient:
         if rtt >= timeout:
             raise RoughtimeError('Timeout while waiting for reply.')
         reply = RoughtimePacket(packet=data)
+
+        return reply, rtt, data
+
+    @staticmethod
+    def __tcp_query(address, port, packet, timeout):
+        for family, type_, proto, canonname, sockaddr in \
+                socket.getaddrinfo(address, port, type=socket.SOCK_STREAM):
+            sock = socket.socket(family, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            try:
+                sock.connect((sockaddr[0], sockaddr[1]))
+                packet_bytes = packet.get_value_bytes()
+                sock.sendall(struct.pack('<I', len(packet_bytes)) + packet_bytes)
+            except Exception as ex:
+                # Try next IP on failure.
+                sock.close()
+                continue
+
+            # Wait for reply
+            start_time = time.monotonic()
+            buf = bytes()
+            while time.monotonic() - start_time < timeout:
+                try:
+                    buf += sock.recv(4096)
+                except socket.timeout:
+                    continue
+                if len(buf) < 4:
+                    continue
+                repl_len = struct.unpack('<I', buf[:4])[0]
+                if repl_len + 4 > len(buf):
+                    continue
+                data = buf[4:4 + repl_len]
+                break
+            rtt = time.monotonic() - start_time
+            sock.close()
+            if rtt >= timeout:
+                # Try next IP on timeout.
+                continue
+            # Break out of loop if successful.
+            break
+        if rtt >= timeout:
+            raise RoughtimeError('Timeout while waiting for reply.')
+        reply = RoughtimePacket(packet=data)
+
+        return reply, rtt, data
+
+    def query(self, address, port, pubkey, timeout=2, newtree=True,
+            protocol='udp'):
+        '''
+        Sends a time query to the server and waits for a reply.
+
+        Args:
+            address (str): The server address.
+            port (int): The server port.
+            pubkey (str): The server's public key in base64 format.
+            timeout (float): Time to wait for a reply from the server.
+            newtree (boolean): True if the server returns 32 byte Merkle tree
+                    node values in PATH and ROOT. False if it returns 64 byte
+                    values in those tags.
+            protocol (str): Either 'udp' or 'tcp'.
+
+        Raises:
+            RoughtimeError: On any error. The message will describe the
+                    specific error that occurred.
+
+        Returns:
+            ret (dict): A dictionary with the following members:
+                    midp       - midpoint (MIDP) in microseconds,
+                    radi       - accuracy (RADI) in microseconds,
+                    datetime   - a datetime object representing the returned
+                                 midpoint,
+                    prettytime - a string representing the returned time.
+                    mint       - a datetime object representing the start of
+                                 validity for the delegate key.
+                    maxt       - a datetime object representing the end of
+                                 validity for the delegate key.
+                    pathlen    - the length of the Merkle tree path sent in
+                                 the server's reply (0 <= pathlen <= 32).
+        '''
+
+        if protocol != 'udp' and protocol != 'tcp':
+            raise RoughtimeError('Illegal protocol type.')
+
+        pubkey = ed25519.VerifyingKey(pubkey, encoding='base64')
+
+        # Generate nonce.
+        blind = os.urandom(64)
+        ha = hashlib.sha512()
+        if len(self.prev_replies) > 0:
+            ha.update(self.prev_replies[-1][2])
+        ha.update(blind)
+        nonce = ha.digest()
+
+        # Create query packet.
+        packet = RoughtimePacket()
+        packet.add_tag(RoughtimeTag('NONC', nonce))
+
+        if protocol == 'udp':
+            packet.add_padding()
+            reply, rtt, data = self.__udp_query(address, port, packet, timeout)
+        else:
+            reply, rtt, data = self.__tcp_query(address, port, packet, timeout)
 
         # Get reply tags.
         srep = reply.get_tag('SREP')
@@ -550,6 +602,29 @@ class RoughtimeTag:
         self.key = key
         assert len(value) % 4 == 0
         self.value = value
+
+    def __repr__(self):
+        'Generates a string representation of the tag.'
+        tag_uint32 = struct.unpack('<I', RoughtimeTag.tag_str_to_uint32(self.key))[0]
+        ret = 'Tag: %s (0x%08x)\n' % (self.get_tag_str(), tag_uint32)
+        if self.get_value_len() == 4 or self.get_value_len() == 8:
+            ret += "Value: %d\n" % self.to_int()
+        ret += "Value bytes:\n"
+        num = 0
+        for b in self.get_value_bytes():
+            ret += '%02x' % b
+            num += 1
+            if num % 16 == 0:
+                ret += '\n'
+            else:
+                ret += ' '
+        if ret[-1] == '\n':
+            pass
+        elif ret[-1] == ' ':
+            ret = ret[:-1] + '\n'
+        else:
+            ret += '\n'
+        return ret
 
     def get_tag_str(self):
         'Returns the tag key string.'
@@ -812,8 +887,9 @@ if __name__ == '__main__':
     with open(args.l) as f:
         serverlist = json.load(f)['servers']
     for server in serverlist:
+        proto = server['addresses'][0]['protocol']
         if server['publicKeyType'] != 'ed25519' \
-                or server['addresses'][0]['protocol'] != 'udp':
+                or (proto != 'udp' and proto != 'tcp'):
             continue
         if not 'newtree' in server:
             newtree = not args.oldtree
@@ -826,7 +902,7 @@ if __name__ == '__main__':
             space = ' ' * (25 - len(server['name']))
         try:
             repl = cl.query(addr, int(port), server['publicKey'],
-                    newtree=newtree)
+                    newtree=newtree, protocol=proto)
             print('%s:%s%s (RTT: %6.1f ms)' % (server['name'], space,
                     repl['prettytime'], repl['rtt'] * 1000))
         except Exception as ex:
