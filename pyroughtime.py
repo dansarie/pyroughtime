@@ -879,7 +879,7 @@ if __name__ == '__main__':
         else:
             print('Delegate key validity end:   %s' %
                     repl['maxt'].strftime('%Y-%m-%d %H:%M:%S.%f'))
-        print ('Merkle tree path length: %d' % repl['pathlen'])
+        print('Merkle tree path length: %d' % repl['pathlen'])
         sys.exit(0)
 
 
