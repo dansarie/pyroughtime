@@ -36,6 +36,19 @@
         }
       ]
     },
+
+    {
+      "name": "dnov",
+      "publicKeyType": "ed25519",
+      "publicKey": "hlKAFAeU+xDZ1+9eVgrXel+m3sRiSlzoqCsqL9WoRB0=",
+      "newver": true,
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "roughtime.dnov.se:2002"
+        }
+      ]
+    },
     {
       "name": "Google-Sandbox-Roughtime",
       "publicKeyType": "ed25519",
