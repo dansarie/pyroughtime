@@ -165,19 +165,24 @@ class RoughtimeServer:
 
             # Ignore requests shorter than 1024 bytes.
             if len(data) < 1024:
+                print("Bad length.")
                 continue
 
             try:
                 request = RoughtimePacket(packet=data)
             except:
+                print("Bad packet.")
                 continue
 
             # Ensure request contains a proper nonce.
-            if not request.contains_tag('NONC'):
+            if request.contains_tag('NONC') == False or request.contains_tag('VER') == False:
+                print(request.tags)
+                print("Missing VER or NONC.")
                 continue
             nonc = request.get_tag('NONC').get_value_bytes()
             if len(nonc) != 64:
-              continue
+                print("NONC != 64")
+                continue
 
             noncelist = [nonc]
             merkle = RoughtimeServer.__construct_merkle(noncelist)
@@ -186,6 +191,8 @@ class RoughtimeServer:
             # Construct reply.
             reply = RoughtimePacket()
             reply.add_tag(ref.cert)
+            reply.add_tag(request.get_tag('NONC'))
+            reply.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x80000003)))
 
             # Single nonce Merkle tree.
             indx = RoughtimeTag('INDX')
@@ -321,7 +328,7 @@ class RoughtimeClient:
             sock = socket.socket(family, socket.SOCK_DGRAM)
             sock.settimeout(0.001)
             try:
-                sock.sendto(packet.get_value_bytes(), (sockaddr[0], sockaddr[1]))
+                sock.sendto(packet, (sockaddr[0], sockaddr[1]))
             except Exception as ex:
                 # Try next IP on failure.
                 sock.close()
@@ -359,8 +366,7 @@ class RoughtimeClient:
             sock.settimeout(timeout)
             try:
                 sock.connect((sockaddr[0], sockaddr[1]))
-                packet_bytes = packet.get_value_bytes()
-                sock.sendall(struct.pack('<I', len(packet_bytes)) + packet_bytes)
+                sock.sendall(packet)
             except Exception as ex:
                 # Try next IP on failure.
                 sock.close()
@@ -394,7 +400,7 @@ class RoughtimeClient:
 
         return reply, rtt, data
 
-    def query(self, address, port, pubkey, timeout=2, newtree=True,
+    def query(self, address, port, pubkey, timeout=2, newver=True,
             protocol='udp'):
         '''
         Sends a time query to the server and waits for a reply.
@@ -404,9 +410,9 @@ class RoughtimeClient:
             port (int): The server port.
             pubkey (str): The server's public key in base64 format.
             timeout (float): Time to wait for a reply from the server.
-            newtree (boolean): True if the server returns 32 byte Merkle tree
-                    node values in PATH and ROOT. False if it returns 64 byte
-                    values in those tags.
+            newver (boolean): True if the server follows the most recent IETF
+                    draft specification. Set to false for compatibility with
+                    pre-IETF specifications.
             protocol (str): Either 'udp' or 'tcp'.
 
         Raises:
@@ -443,10 +449,14 @@ class RoughtimeClient:
 
         # Create query packet.
         packet = RoughtimePacket()
+        if newver:
+            packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x80000003)))
         packet.add_tag(RoughtimeTag('NONC', nonce))
-
         if protocol == 'udp':
             packet.add_padding()
+        packet = packet.get_value_bytes(packet_header=newver)
+
+        if protocol == 'udp':
             reply, rtt, data = self.__udp_query(address, port, packet, timeout)
         else:
             reply, rtt, data = self.__tcp_query(address, port, packet, timeout)
@@ -459,9 +469,17 @@ class RoughtimeClient:
         dele = cert.get_tag('DELE')
         if dele == None:
             raise RoughtimeError('Missing tag in server reply.')
+        nonc = reply.get_tag('NONC')
+        if newver:
+            if nonc == None:
+                raise RoughtimeError('Missing tag in server reply.')
+            if nonc.get_value_bytes() != nonce:
+                raise RoughtimeError('Bad NONC in server reply.')
 
         try:
             dsig = cert.get_tag('SIG').get_value_bytes()
+            dtai = srep.get_tag('DTAI')
+            leap = srep.get_tag('LEAP')
             midp = srep.get_tag('MIDP').to_int()
             radi = srep.get_tag('RADI').to_int()
             root = srep.get_tag('ROOT').get_value_bytes()
@@ -471,13 +489,24 @@ class RoughtimeClient:
             pubk = dele.get_tag('PUBK').get_value_bytes()
             mint = dele.get_tag('MINT').to_int()
             maxt = dele.get_tag('MAXT').to_int()
+
         except:
             raise RoughtimeError('Missing tag in server reply or parse error.')
+
+        if dtai != None:
+            dtai = dtai.to_int()
+
+        if leap != None:
+            leapbytes = leap.get_value_bytes()
+            leap = []
+            while len(leapbytes) > 0:
+                leap.append(struct.unpack('<I', leapbytes[:4])[0] & 0x7fffffff)
+                leapbytes = leapbytes[4:]
 
         # Verify signature of DELE with long term certificate.
         try:
             pubkey.verify(dsig, RoughtimeServer.CERTIFICATE_CONTEXT
-                    + dele.get_value_bytes())
+                    + dele.get_received())
         except:
             raise RoughtimeError('Verification of long term certificate '
                     + 'signature failed.')
@@ -486,23 +515,21 @@ class RoughtimeClient:
         if mint > midp or maxt < midp:
             raise RoughtimeError('MIDP outside delegated key validity time.')
 
-        if newtree:
+        if newver:
             node_size = 32
         else:
             node_size = 64
 
         # Ensure that Merkle tree is correct and includes nonce.
         curr_hash = hashlib.sha512(b'\x00' + nonce).digest()[:node_size]
-
         if len(path) % node_size != 0:
             raise RoughtimeError('PATH length not a multiple of %d.' \
                     % node_size)
-        pathlen = len(path) / node_size
+        pathlen = len(path) // node_size
         if pathlen > 32:
             raise RoughtimeError('Too many paths in Merkle tree.')
 
         while len(path) > 0:
-            ha = hashlib.sha512()
             if indx & 1 == 0:
                 curr_hash = hashlib.sha512(b'\x01' + curr_hash
                         + path[:node_size]).digest()
@@ -522,7 +549,7 @@ class RoughtimeClient:
         delekey = ed25519.VerifyingKey(pubk)
         try:
             delekey.verify(sig, RoughtimeServer.SIGNED_RESPONSE_CONTEXT
-                    + srep.get_value_bytes())
+                    + srep.get_received())
         except:
             raise RoughtimeError('Bad DELE key signature.')
 
@@ -544,6 +571,10 @@ class RoughtimeClient:
         ret['mint'] = RoughtimeClient.midp_to_datetime(mint)
         ret['maxt'] = RoughtimeClient.midp_to_datetime(maxt)
         ret['pathlen'] = pathlen
+        if dtai != None:
+            ret['dtai'] = dtai
+        if leap != None:
+            ret['leap'] = leap
         return ret
 
     def get_previous_replies(self):
@@ -682,6 +713,14 @@ class RoughtimeTag:
         return chr(tag & 0xff) + chr((tag >> 8) & 0xff) \
                 + chr((tag >> 16) & 0xff) + chr(tag >> 24)
 
+    @staticmethod
+    def uint32_to_bytes(val):
+        return struct.pack('<I', val)
+
+    @staticmethod
+    def uint64_to_bytes(val):
+        return struct.pack('<Q', val)
+
 class RoughtimePacket(RoughtimeTag):
     '''
     Represents a Roughtime packet.
@@ -699,13 +738,21 @@ class RoughtimePacket(RoughtimeTag):
     def __init__(self, key='\x00\x00\x00\x00', packet=None):
         self.tags = []
         self.key = key
+        self.packet = None
 
         # Return if there is no packet to parse.
         if packet == None:
             return
 
+        self.packet = packet
+
         if len(packet) % 4 != 0:
             raise RoughtimeError('Packet size is not a multiple of four.')
+
+        if RoughtimePacket.unpack_uint64(packet, 0) == 0x4d49544847554f52:
+            if len(packet) - 12 != RoughtimePacket.unpack_uint32(packet, 8):
+                raise RoughtimeError('Bad packet size.')
+            packet = packet[12:]
 
         num_tags = RoughtimePacket.unpack_uint32(packet, 0)
         headerlen = 8 * num_tags
@@ -738,7 +785,8 @@ class RoughtimePacket(RoughtimeTag):
             value = packet[offset:end]
 
             leaf_tags = ['SIG\x00', 'INDX', 'PATH', 'ROOT', 'MIDP', 'RADI',
-                    'PAD\x00', 'PAD\xff', 'NONC', 'MINT', 'MAXT', 'PUBK']
+                    'PAD\x00', 'PAD\xff', 'NONC', 'MINT', 'MAXT', 'PUBK',
+                    'VER\x00', 'DTAI', 'DUT1', 'LEAP']
             parent_tags = ['SREP', 'CERT', 'DELE']
             if self.contains_tag(key):
                 raise RoughtimeError('Encountered duplicate tag: %s' % key)
@@ -749,10 +797,6 @@ class RoughtimePacket(RoughtimeTag):
                 self.add_tag(RoughtimePacket(key, packet[offset:end]))
             else:
                 raise RoughtimeError('Encountered unknown tag: %s' % key)
-
-        # Ensure that the library representation is identical with the received
-        # bytes.
-        assert packet == self.get_value_bytes()
 
     def add_tag(self, tag):
         '''
@@ -770,6 +814,7 @@ class RoughtimePacket(RoughtimeTag):
                 raise RoughtimeError('Attempted to add two tags with same key '
                         + 'to RoughtimePacket.')
         self.tags.append(tag)
+        self.tags.sort(key=lambda x: struct.unpack('<I', x.get_tag_bytes()))
 
     def contains_tag(self, tag):
         '''
@@ -781,6 +826,10 @@ class RoughtimePacket(RoughtimeTag):
         Returns:
             boolean
         '''
+        if len(tag) > 4:
+            raise ValueError
+        while len(tag) < 4:
+            tag += '\x00'
         for t in self.tags:
             if t.get_tag_str() == tag:
                 return True
@@ -813,7 +862,7 @@ class RoughtimePacket(RoughtimeTag):
         'Returns the number of keys in the packet.'
         return len(self.tags)
 
-    def get_value_bytes(self):
+    def get_value_bytes(self, packet_header=False):
         'Returns the raw byte string representing the value of the tag.'
         packet = struct.pack('<I', len(self.tags))
         offset = 0
@@ -825,7 +874,12 @@ class RoughtimePacket(RoughtimeTag):
         for tag in self.tags:
             packet += tag.get_value_bytes()
         assert len(packet) % 4 == 0
+        if packet_header:
+            packet = struct.pack('<QI', 0x4d49544847554f52, len(packet)) + packet
         return packet
+
+    def get_received(self):
+        return self.packet
 
     def add_padding(self):
         '''
@@ -844,8 +898,12 @@ class RoughtimePacket(RoughtimeTag):
     @staticmethod
     def unpack_uint32(buf, offset):
         'Utility function for parsing server replies.'
-        (val,) = struct.unpack('<I', buf[offset:offset + 4])
-        return val
+        return struct.unpack('<I', buf[offset:offset + 4])[0]
+
+    @staticmethod
+    def unpack_uint64(buf, offset):
+        'Utility function for parsing server replies.'
+        return struct.unpack('<Q', buf[offset:offset + 8])[0]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Query Roughtime servers '
@@ -853,8 +911,8 @@ if __name__ == '__main__':
             'to query either a single Roughtime server specified on the '
             'command line, or a number of servers listed in a JSON file.')
 
-    parser.add_argument('-o', '--oldtree', action='store_true',
-            help='validate replies using old style Merkle tree by default')
+    parser.add_argument('-o', '--oldver', action='store_true',
+            help='use pre-IETF protocol by default')
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('-s', nargs=3,
@@ -870,8 +928,14 @@ if __name__ == '__main__':
     # Query a single server.
     if args.s is not None:
         repl = cl.query(args.s[0], int(args.s[1]), args.s[2],
-                newtree=not args.oldtree)
+                newver=not args.oldver)
         print('%s (RTT: %.1f ms)' % (repl['prettytime'], repl['rtt'] * 1000))
+        if 'dtai' in repl:
+            print('TAI - UTC = %ds' % repl['dtai'])
+        if 'leap' in repl:
+            print("Leap events: ")
+            for l in repl['leap']:
+                print('  ' + datetime.date.fromordinal(678576 + l).isoformat())
         print('Delegate key validity start: %s' %
                 repl['mint'].strftime('%Y-%m-%d %H:%M:%S.%f'))
         if repl['maxt'] is None:
@@ -882,7 +946,6 @@ if __name__ == '__main__':
         print('Merkle tree path length: %d' % repl['pathlen'])
         sys.exit(0)
 
-
     # Query a list of servers in a JSON file.
     with open(args.l) as f:
         serverlist = json.load(f)['servers']
@@ -891,10 +954,10 @@ if __name__ == '__main__':
         if server['publicKeyType'] != 'ed25519' \
                 or (proto != 'udp' and proto != 'tcp'):
             continue
-        if not 'newtree' in server:
-            newtree = not args.oldtree
+        if not 'newver' in server:
+            newver = not args.oldver
         else:
-            newtree = server['newtree']
+            newver = server['newver']
         addr, port = server['addresses'][0]['address'].split(':')
         if len(server['name']) > 25:
             space = ' '
@@ -902,7 +965,7 @@ if __name__ == '__main__':
             space = ' ' * (25 - len(server['name']))
         try:
             repl = cl.query(addr, int(port), server['publicKey'],
-                    newtree=newtree, protocol=proto)
+                    newver=newver, protocol=proto)
             print('%s:%s%s (RTT: %6.1f ms)' % (server['name'], space,
                     repl['prettytime'], repl['rtt'] * 1000))
         except Exception as ex:
