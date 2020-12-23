@@ -933,9 +933,12 @@ if __name__ == '__main__':
         if 'dtai' in repl:
             print('TAI - UTC = %ds' % repl['dtai'])
         if 'leap' in repl:
-            print("Leap events: ")
-            for l in repl['leap']:
-                print('  ' + datetime.date.fromordinal(678576 + l).isoformat())
+            if len(repl['leap']) == 0:
+                print("Leap events: None")
+            else:
+                print("Leap events: ")
+                for l in repl['leap']:
+                    print('  ' + datetime.date.fromordinal(678576 + l).isoformat())
         print('Delegate key validity start: %s' %
                 repl['mint'].strftime('%Y-%m-%d %H:%M:%S.%f'))
         if repl['maxt'] is None:
