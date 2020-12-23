@@ -380,12 +380,14 @@ class RoughtimeClient:
                     buf += sock.recv(4096)
                 except socket.timeout:
                     continue
-                if len(buf) < 4:
+                if len(buf) < 12:
                     continue
-                repl_len = struct.unpack('<I', buf[:4])[0]
-                if repl_len + 4 > len(buf):
+                (magic, repl_len) = struct.unpack('<QI', buf[:12])
+                if magic != 0x4d49544847554f52:
+                    raise RoughtimeError('Bad packet header.')
+                if repl_len + 12 > len(buf):
                     continue
-                data = buf[4:4 + repl_len]
+                data = buf[:repl_len + 12]
                 break
             rtt = time.monotonic() - start_time
             sock.close()
