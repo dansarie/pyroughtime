@@ -447,7 +447,9 @@ class RoughtimeClient:
         if len(self.prev_replies) > 0:
             ha.update(self.prev_replies[-1][2])
         ha.update(blind)
-        nonce = ha.digest()[:32]
+        nonce = ha.digest()
+        if newver:
+            nonce = nonce[:32]
 
         # Create query packet.
         packet = RoughtimePacket()
