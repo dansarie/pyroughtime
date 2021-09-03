@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # pyroughtime
-# Copyright (C) 2019-2020 Marcus Dansarie <marcus@dansarie.se>
+# Copyright (C) 2019-2021 Marcus Dansarie <marcus@dansarie.se>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -117,7 +117,7 @@ class RoughtimeServer:
             # Calculate next power of two.
             size = RoughtimeServer.__clp2(len(nonces))
             # Extend nonce list to the next power of two.
-            nonces += [os.urandom(64) for x in range(size - len(nonces))]
+            nonces += [os.urandom(32) for x in range(size - len(nonces))]
             # Calculate list order
             order = 0
             while size & 1 == 0:
@@ -180,8 +180,8 @@ class RoughtimeServer:
                 print("Missing VER or NONC.")
                 continue
             nonc = request.get_tag('NONC').get_value_bytes()
-            if len(nonc) != 64:
-                print("NONC != 64")
+            if len(nonc) != 32:
+                print("NONC != 32")
                 continue
 
             noncelist = [nonc]
@@ -447,7 +447,7 @@ class RoughtimeClient:
         if len(self.prev_replies) > 0:
             ha.update(self.prev_replies[-1][2])
         ha.update(blind)
-        nonce = ha.digest()
+        nonce = ha.digest()[:32]
 
         # Create query packet.
         packet = RoughtimePacket()
