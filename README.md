@@ -3,11 +3,12 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 An experimental Roughtime client and server implementation in Python 3 using the IETF draft at
-<https://tools.ietf.org/html/draft-ietf-ntp-roughtime-05>.
+<https://tools.ietf.org/html/draft-ietf-ntp-roughtime-07>.
 
 ## Dependencies
 
 * [ed25519](https://github.com/warner/python-ed25519/)
+* [PyCryptodome](https://github.com/Legrandin/pycryptodome)
 
 ## Example
 
