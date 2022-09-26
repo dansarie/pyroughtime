@@ -199,7 +199,7 @@ class RoughtimeServer:
             reply = RoughtimePacket()
             reply.add_tag(ref.cert)
             reply.add_tag(request.get_tag('NONC'))
-            reply.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x80000003)))
+            reply.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x80000007)))
 
             # Single nonce Merkle tree.
             indx = RoughtimeTag('INDX')
