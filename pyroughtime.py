@@ -430,17 +430,27 @@ class RoughtimeClient:
 
         Returns:
             ret (dict): A dictionary with the following members:
-                    midp       - midpoint (MIDP) in microseconds,
-                    radi       - accuracy (RADI) in microseconds,
+                    midp       - midpoint (MIDP) in microseconds.
+                    radi       - accuracy (RADI) in microseconds.
                     datetime   - a datetime object representing the returned
-                                 midpoint,
+                                 midpoint.
                     prettytime - a string representing the returned time.
+                    rtt        - a float representing the round trip time in
+                                 seconds.
                     mint       - a datetime object representing the start of
                                  validity for the delegate key.
                     maxt       - a datetime object representing the end of
                                  validity for the delegate key.
                     pathlen    - the length of the Merkle tree path sent in
                                  the server's reply (0 <= pathlen <= 32).
+                    dtai       - an integer representing the current TAI - UTC
+                                 value in seconds.
+                    leap       - a list of integers representing the modified
+                                 julian dates of leap second events reported
+                                 by the server.
+                    ver        - a string representing the server's reported
+                                 version. Only present if the server sent a
+                                 VER tag in the response.
         '''
 
         if protocol != 'udp' and protocol != 'tcp':
@@ -487,6 +497,7 @@ class RoughtimeClient:
                 raise RoughtimeError('Missing tag in server reply.')
             if nonc.get_value_bytes() != nonce:
                 raise RoughtimeError('Bad NONC in server reply.')
+        ver = reply.get_tag('VER')
 
         try:
             dsig = cert.get_tag('SIG').get_value_bytes()
@@ -501,6 +512,9 @@ class RoughtimeClient:
             pubk = dele.get_tag('PUBK').get_value_bytes()
             mint = dele.get_tag('MINT').to_int()
             maxt = dele.get_tag('MAXT').to_int()
+            ver = reply.get_tag('VER')
+            if ver != None:
+                ver = ver.to_int()
 
         except:
             raise RoughtimeError('Missing tag in server reply or parse error.')
@@ -592,6 +606,11 @@ class RoughtimeClient:
             ret['dtai'] = dtai
         if leap != None:
             ret['leap'] = leap
+        if ver != None:
+            if ver & 0x80000000 != 0:
+                ret['ver'] = 'draft-%02d' % (ver & 0x7fffffff)
+            else:
+                ret['ver'] = str(ver)
         return ret
 
     def get_previous_replies(self):
@@ -947,6 +966,8 @@ if __name__ == '__main__':
         repl = cl.query(args.s[0], int(args.s[1]), args.s[2],
                 newver=not args.oldver)
         print('%s (RTT: %.1f ms)' % (repl['prettytime'], repl['rtt'] * 1000))
+        if 'ver' in repl:
+            print('Server version: ' + repl['ver'])
         if 'dtai' in repl:
             print('TAI - UTC = %ds' % repl['dtai'])
         if 'leap' in repl:
