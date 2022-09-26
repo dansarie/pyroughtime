@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # pyroughtime
-# Copyright (C) 2019-2021 Marcus Dansarie <marcus@dansarie.se>
+# Copyright (C) 2019-2022 Marcus Dansarie <marcus@dansarie.se>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@ import argparse
 import base64
 import ed25519
 import datetime
-import hashlib
 import json
 import os
 import socket
@@ -29,6 +28,8 @@ import struct
 import sys
 import threading
 import time
+
+from Crypto.Hash import SHA512
 
 class RoughtimeError(Exception):
     'Represents an error that has occured in the Roughtime client.'
@@ -49,7 +50,8 @@ class RoughtimeServer:
         RoughtimeError: If cert and pkey do not represent a valid ed25519
                 certificate pair.
     '''
-    CERTIFICATE_CONTEXT = b'RoughTime v1 delegation signature--\x00'
+    CERTIFICATE_CONTEXT = b'RoughTime v1 delegation signature\x00'
+    CERTIFICATE_CONTEXT_OLD = b'RoughTime v1 delegation signature--\x00'
     SIGNED_RESPONSE_CONTEXT = b'RoughTime v1 response signature\x00'
     def __init__(self, cert, pkey, radi=100000):
         cert = base64.b64decode(cert)
@@ -442,19 +444,20 @@ class RoughtimeClient:
         pubkey = ed25519.VerifyingKey(pubkey, encoding='base64')
 
         # Generate nonce.
-        blind = os.urandom(64)
-        ha = hashlib.sha512()
+        blind = os.urandom(32)
+        if newver:
+            ha = SHA512.new(truncate='256')
+        else:
+            ha = SHA512.new()
         if len(self.prev_replies) > 0:
             ha.update(self.prev_replies[-1][2])
         ha.update(blind)
         nonce = ha.digest()
-        if newver:
-            nonce = nonce[:32]
 
         # Create query packet.
         packet = RoughtimePacket()
         if newver:
-            packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x80000003)))
+            packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x80000007)))
         packet.add_tag(RoughtimeTag('NONC', nonce))
         if protocol == 'udp':
             packet.add_padding()
@@ -508,9 +511,12 @@ class RoughtimeClient:
                 leapbytes = leapbytes[4:]
 
         # Verify signature of DELE with long term certificate.
+        if newver:
+            context = RoughtimeServer.CERTIFICATE_CONTEXT
+        else:
+            context = RoughtimeServer.CERTIFICATE_CONTEXT_OLD
         try:
-            pubkey.verify(dsig, RoughtimeServer.CERTIFICATE_CONTEXT
-                    + dele.get_received())
+            pubkey.verify(dsig, context + dele.get_received())
         except:
             raise RoughtimeError('Verification of long term certificate '
                     + 'signature failed.')
@@ -521,11 +527,14 @@ class RoughtimeClient:
 
         if newver:
             node_size = 32
+            ha = SHA512.new(truncate='256')
         else:
             node_size = 64
+            ha = SHA512.new()
 
         # Ensure that Merkle tree is correct and includes nonce.
-        curr_hash = hashlib.sha512(b'\x00' + nonce).digest()[:node_size]
+        ha.update(b'\x00' + nonce)
+        curr_hash = ha.digest()
         if len(path) % node_size != 0:
             raise RoughtimeError('PATH length not a multiple of %d.' \
                     % node_size)
@@ -534,13 +543,12 @@ class RoughtimeClient:
             raise RoughtimeError('Too many paths in Merkle tree.')
 
         while len(path) > 0:
+            ha = ha.new()
             if indx & 1 == 0:
-                curr_hash = hashlib.sha512(b'\x01' + curr_hash
-                        + path[:node_size]).digest()
+                ha.update(b'\x01' + curr_hash + path[:node_size])
             else:
-                curr_hash = hashlib.sha512(b'\x01' + path[:node_size]
-                        + curr_hash).digest()
-            curr_hash = curr_hash[:node_size]
+                ha.update(b'\x01' + path[:node_size] + curr_hash)
+            curr_hash = ha.digest()
             path = path[node_size:]
             indx >>= 1
 
