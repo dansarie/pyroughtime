@@ -1007,8 +1007,12 @@ if __name__ == '__main__':
         try:
             repl = cl.query(addr, int(port), server['publicKey'],
                     newver=newver, protocol=proto)
-            print('%s:%s%s (RTT: %6.1f ms)' % (server['name'], space,
-                    repl['prettytime'], repl['rtt'] * 1000))
+            if 'ver' in repl:
+                ver = repl['ver']
+            else:
+                ver = '?'
+            print('%s:%s%s RTT: %6.1f ms Version: %s' % (server['name'],
+                    space, repl['prettytime'], repl['rtt'] * 1000, ver))
         except Exception as ex:
             print('%s:%sException: %s' % (server['name'], space, ex))
             continue
