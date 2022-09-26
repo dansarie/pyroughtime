@@ -471,8 +471,7 @@ class RoughtimeClient:
 
         # Create query packet.
         packet = RoughtimePacket()
-        if newver:
-            packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x80000007)))
+        packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x80000007)))
         packet.add_tag(RoughtimeTag('NONC', nonce))
         if protocol == 'udp':
             packet.add_padding()
@@ -821,8 +820,8 @@ class RoughtimePacket(RoughtimeTag):
             value = packet[offset:end]
 
             leaf_tags = ['SIG\x00', 'INDX', 'PATH', 'ROOT', 'MIDP', 'RADI',
-                    'PAD\x00', 'PAD\xff', 'NONC', 'MINT', 'MAXT', 'PUBK',
-                    'VER\x00', 'DTAI', 'DUT1', 'LEAP']
+                    'PAD\x00', 'NONC', 'MINT', 'MAXT', 'PUBK', 'VER\x00',
+                    'DTAI', 'DUT1', 'LEAP']
             parent_tags = ['SREP', 'CERT', 'DELE']
             if self.contains_tag(key):
                 raise RoughtimeError('Encountered duplicate tag: %s' % key)
@@ -927,9 +926,7 @@ class RoughtimePacket(RoughtimeTag):
         if packetlen >= 1024:
             return
         padlen = 1016 - packetlen
-        # Transmit "PAD\xff" instead of "PAD" for compatibility with older
-        # servers that do not properly ignore unknown tags in queries.
-        self.add_tag(RoughtimeTag('PAD\xff', b'\x00' * padlen))
+        self.add_tag(RoughtimeTag('PAD\x00', b'\x00' * padlen))
 
     @staticmethod
     def unpack_uint32(buf, offset):
