@@ -115,25 +115,30 @@ class RoughtimeServer:
         # First call:  and calculate order
         if prev == None:
             # Hash nonces.
-            nonces = [hashlib.sha512(b'\x00' + x).digest()[:32] for x in nonces]
+            hashes = []
+            for n in nonces:
+                ha = SHA512.new(truncate='256')
+                ha.update(b'\x00' + n)
+                hashes.append(ha.digest())
             # Calculate next power of two.
-            size = RoughtimeServer.__clp2(len(nonces))
+            size = RoughtimeServer.__clp2(len(hashes))
             # Extend nonce list to the next power of two.
-            nonces += [os.urandom(32) for x in range(size - len(nonces))]
+            hashes += [os.urandom(32) for x in range(size - len(hashes))]
             # Calculate list order
             order = 0
             while size & 1 == 0:
                 order += 1
                 size >>= 1
-            return RoughtimeServer.__construct_merkle(nonces, [nonces], order)
+            return RoughtimeServer.__construct_merkle(hashes, [hashes], order)
 
         if order == 0:
             return prev
 
         out = []
         for n in range(1 << (order - 1)):
-            out.append(hashlib.sha512(b'\x01' + nonces[n * 2]
-                    + nonces[n * 2 + 1]).digest()[:32])
+            ha = SHA512.new(truncate='256')
+            ha.update(b'\x01' + nonces[n * 2] + nonces[n * 2 + 1])
+            out.append(ha.digest())
 
         prev.append(out)
         return RoughtimeServer.__construct_merkle(out, prev, order - 1)
