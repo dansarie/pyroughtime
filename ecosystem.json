@@ -59,6 +59,42 @@
           "address": "time.0xt.ca:2002"
         }
       ]
+    },
+    {
+      "name": "sth1.roughtime.netnod.se",
+      "publicKeyType": "ed25519",
+      "publicKey": "9l1JN4HakGnG44yyqyNNCb0HN0XfsysBbnl/kbZoZDc=",
+      "newver": true,
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "sth1.roughtime.netnod.se:2002"
+        }
+      ]
+    },
+    {
+      "name": "sth2.roughtime.netnod.se",
+      "publicKeyType": "ed25519",
+      "publicKey": "T/xxX4ERUBAOpt64Z8phWamKsASZxJ0VWuiPm3GS/8g=",
+      "newver": true,
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "sth2.roughtime.netnod.se:2002"
+        }
+      ]
+    },
+    {
+      "name": "lab.roughtime.netnod.se",
+      "publicKeyType": "ed25519",
+      "publicKey": "tAPsQc3D36mJPOX1/LLNbV0M3fuTPjwW54mGvw+V1hE=",
+      "newver": true,
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "lab.roughtime.netnod.se:2002"
+        }
+      ]
     }
   ]
 }
