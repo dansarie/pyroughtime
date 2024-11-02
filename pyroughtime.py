@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # pyroughtime
-# Copyright (C) 2019-2022 Marcus Dansarie <marcus@dansarie.se>
+# Copyright (C) 2019-2024 Marcus Dansarie <marcus@dansarie.se>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,17 +19,18 @@
 
 import argparse
 import base64
-import ed25519
 import datetime
 import json
 import os
+import secrets
 import socket
 import struct
 import sys
 import threading
 import time
 
-from Crypto.Hash import SHA512
+from Cryptodome.Hash import SHA512
+from Cryptodome.Signature import eddsa
 
 class RoughtimeError(Exception):
     'Represents an error that has occured in the Roughtime client.'
@@ -59,15 +60,17 @@ class RoughtimeServer:
         if len(cert) != 152:
             raise RoughtimeError('Wrong CERT length.')
         self.cert = RoughtimePacket('CERT', cert)
-        self.pkey = ed25519.SigningKey(pkey)
+        self.pkey = eddsa.import_private_key(pkey)
         self.radi = int(radi)
 
         # Ensure that the CERT and private key are a valid pair.
-        pubkey = ed25519.VerifyingKey(self.cert.get_tag('DELE') \
+        pubkey = eddsa.import_public_key(self.cert.get_tag('DELE') \
                 .get_tag('PUBK').get_value_bytes())
-        testsign = self.pkey.sign(RoughtimeServer.SIGNED_RESPONSE_CONTEXT)
+        sign = eddsa.new(self.pkey, 'rfc8032')
+        testsign = sign.sign(RoughtimeServer.SIGNED_RESPONSE_CONTEXT)
         try:
-            pubkey.verify(testsign, RoughtimeServer.SIGNED_RESPONSE_CONTEXT)
+            ver = eddsa.new(pubkey, 'rfc8032')
+            ver.verify(RoughtimeServer.SIGNED_RESPONSE_CONTEXT, testsign)
         except:
             raise RoughtimeError('CERT and pkey arguments are not a valid '
                     + 'certificate pair.')
@@ -240,9 +243,10 @@ class RoughtimeServer:
             priv (bytes): A base64 encoded ed25519 private key.
             publ (bytes): A base64 encoded ed25519 public key.
         '''
-        priv, publ = ed25519.create_keypair()
-        return base64.b64encode(priv.to_bytes()), \
-                base64.b64encode(publ.to_bytes())
+        priv = secrets.token_bytes(32)
+        publ = eddsa.import_private_key(priv).public_key() \
+               .export_key(format='raw')
+        return base64.b64encode(priv), base64.b64encode(publ)
 
     @staticmethod
     def create_delegate_key(priv, mint=None, maxt=None):
@@ -266,8 +270,10 @@ class RoughtimeServer:
         if maxt == None or maxt <= mint:
             maxt = RoughtimeServer.__datetime_to_timestamp(\
                     datetime.datetime.now() + datetime.timedelta(days=30))
-        priv = ed25519.SigningKey(priv, encoding='base64')
-        dpriv, dpubl = ed25519.create_keypair()
+        priv = eddsa.new(eddsa.import_private_key(priv), 'rfc8032')
+        dpriv = secrets.token_bytes(32)
+        dpubl = eddsa.import_private_key(dpriv).public_key() \
+                .export_key(format='raw')
         mint_tag = RoughtimeTag('MINT')
         maxt_tag = RoughtimeTag('MAXT')
         mint_tag.set_value_uint64(mint)
@@ -288,7 +294,7 @@ class RoughtimeServer:
         cert.add_tag(sig)
 
         return base64.b64encode(cert.get_value_bytes()), \
-                base64.b64encode(dpriv.to_bytes())
+                base64.b64encode(dpriv)
 
     @staticmethod
     def test_server():
@@ -456,7 +462,8 @@ class RoughtimeClient:
         if protocol != 'udp' and protocol != 'tcp':
             raise RoughtimeError('Illegal protocol type.')
 
-        pubkey = ed25519.VerifyingKey(pubkey, encoding='base64')
+        pubkey = eddsa.new(eddsa.import_public_key(base64.b64decode(pubkey)),
+                           'rfc8032')
 
         # Generate nonce.
         blind = os.urandom(32)
@@ -534,7 +541,7 @@ class RoughtimeClient:
         else:
             context = RoughtimeServer.CERTIFICATE_CONTEXT_OLD
         try:
-            pubkey.verify(dsig, context + dele.get_received())
+            pubkey.verify(context + dele.get_received(), dsig)
         except:
             raise RoughtimeError('Verification of long term certificate '
                     + 'signature failed.')
@@ -576,10 +583,10 @@ class RoughtimeClient:
             raise RoughtimeError('Final Merkle tree value not equal to ROOT.')
 
         # Verify that DELE signature of SREP is valid.
-        delekey = ed25519.VerifyingKey(pubk)
+        delekey = eddsa.new(eddsa.import_public_key(pubk), 'rfc8032')
         try:
-            delekey.verify(sig, RoughtimeServer.SIGNED_RESPONSE_CONTEXT
-                    + srep.get_received())
+            delekey.verify(RoughtimeServer.SIGNED_RESPONSE_CONTEXT
+                    + srep.get_received(), sig)
         except:
             raise RoughtimeError('Bad DELE key signature.')
 
