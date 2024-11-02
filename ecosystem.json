@@ -1,38 +1,14 @@
 {
   "servers": [
     {
-      "name": "Cloudflare-Roughtime",
+      "name": "Cloudflare-Roughtime-2",
       "publicKeyType": "ed25519",
-      "publicKey": "gD63hSj3ScS+wuOeGrubXlq35N1c5Lby/S+T7MNTjxo=",
-      "newver": false,
-      "addresses": [
-        {
-          "protocol": "udp",
-          "address": "roughtime.cloudflare.com:2002"
-        }
-      ]
-    },
-    {
-      "name": "dnov",
-      "publicKeyType": "ed25519",
-      "publicKey": "hlKAFAeU+xDZ1+9eVgrXel+m3sRiSlzoqCsqL9WoRB0=",
+      "publicKey": "0GD7c3yP8xEc4Zl2zeuN2SlLvDVVocjsPSL8/Rl/7zg=",
       "newver": true,
       "addresses": [
         {
           "protocol": "udp",
-          "address": "roughtime.dnov.se:2002"
-        }
-      ]
-    },
-    {
-      "name": "int08h-Roughtime",
-      "publicKeyType": "ed25519",
-      "publicKey": "AW5uAoTSTDfG5NfY1bTh08GUnOqlRb+HVhbJ3ODJvsE=",
-      "newver": false,
-      "addresses": [
-        {
-          "protocol": "udp",
-          "address": "roughtime.int08h.com:2002"
+          "address": "roughtime.cloudflare.com:2003"
         }
       ]
     },
@@ -45,18 +21,6 @@
         {
           "protocol": "udp",
           "address": "roughtime.se:2002"
-        }
-      ]
-    },
-    {
-      "name": "time.0xt.ca",
-      "publicKeyType": "ed25519",
-      "publicKey": "iBVjxg/1j7y1+kQUTBYdTabxCppesU/07D4PMDJk2WA=",
-      "newver": false,
-      "addresses": [
-        {
-          "protocol": "udp",
-          "address": "time.0xt.ca:2002"
         }
       ]
     },
