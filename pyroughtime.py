@@ -51,8 +51,9 @@ class RoughtimeServer:
         RoughtimeError: If cert and pkey do not represent a valid ed25519
                 certificate pair.
     '''
-    CERTIFICATE_CONTEXT = b'RoughTime v1 delegation signature\x00'
+    # CERTIFICATE_CONTEXT = b'RoughTime v1 delegation signature\x00'
     CERTIFICATE_CONTEXT_OLD = b'RoughTime v1 delegation signature--\x00'
+    CERTIFICATE_CONTEXT = CERTIFICATE_CONTEXT_OLD
     SIGNED_RESPONSE_CONTEXT = b'RoughTime v1 response signature\x00'
     def __init__(self, cert, pkey, radi=100000):
         cert = base64.b64decode(cert)
@@ -120,9 +121,9 @@ class RoughtimeServer:
             # Hash nonces.
             hashes = []
             for n in nonces:
-                ha = SHA512.new(truncate='256')
+                ha = SHA512.new()
                 ha.update(b'\x00' + n)
-                hashes.append(ha.digest())
+                hashes.append(ha.digest()[:32])
             # Calculate next power of two.
             size = RoughtimeServer.__clp2(len(hashes))
             # Extend nonce list to the next power of two.
@@ -139,9 +140,9 @@ class RoughtimeServer:
 
         out = []
         for n in range(1 << (order - 1)):
-            ha = SHA512.new(truncate='256')
+            ha = SHA512.new()
             ha.update(b'\x01' + nonces[n * 2] + nonces[n * 2 + 1])
-            out.append(ha.digest())
+            out.append(ha.digest()[:32])
 
         prev.append(out)
         return RoughtimeServer.__construct_merkle(out, prev, order - 1)
@@ -462,23 +463,27 @@ class RoughtimeClient:
         if protocol != 'udp' and protocol != 'tcp':
             raise RoughtimeError('Illegal protocol type.')
 
-        pubkey = eddsa.new(eddsa.import_public_key(base64.b64decode(pubkey)),
-                           'rfc8032')
+        pubkey_bytes = base64.b64decode(pubkey)
+        pubkey = eddsa.new(eddsa.import_public_key(pubkey_bytes), 'rfc8032')
 
         # Generate nonce.
         blind = os.urandom(32)
-        if newver:
-            ha = SHA512.new(truncate='256')
-        else:
-            ha = SHA512.new()
+        ha = SHA512.new()
         if len(self.prev_replies) > 0:
             ha.update(self.prev_replies[-1][2])
         ha.update(blind)
         nonce = ha.digest()
+        if newver:
+            nonce = nonce[:32]
 
         # Create query packet.
         packet = RoughtimePacket()
-        packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x80000007)))
+        ha = SHA512.new()
+        ha.update(b'\xff')
+        ha.update(pubkey_bytes)
+        srvhash = ha.digest()[:32]
+        packet.add_tag(RoughtimeTag('SRV', srvhash))
+        packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x8000000B)))
         packet.add_tag(RoughtimeTag('NONC', nonce))
         if protocol == 'udp':
             packet.add_padding()
@@ -552,14 +557,14 @@ class RoughtimeClient:
 
         if newver:
             node_size = 32
-            ha = SHA512.new(truncate='256')
         else:
             node_size = 64
-            ha = SHA512.new()
+
+        ha = SHA512.new()
 
         # Ensure that Merkle tree is correct and includes nonce.
         ha.update(b'\x00' + nonce)
-        curr_hash = ha.digest()
+        curr_hash = ha.digest()[:node_size]
         if len(path) % node_size != 0:
             raise RoughtimeError('PATH length not a multiple of %d.' \
                     % node_size)
@@ -573,7 +578,7 @@ class RoughtimeClient:
                 ha.update(b'\x01' + curr_hash + path[:node_size])
             else:
                 ha.update(b'\x01' + path[:node_size] + curr_hash)
-            curr_hash = ha.digest()
+            curr_hash = ha.digest()[:node_size]
             path = path[node_size:]
             indx >>= 1
 
@@ -828,7 +833,7 @@ class RoughtimePacket(RoughtimeTag):
 
             leaf_tags = ['SIG\x00', 'INDX', 'PATH', 'ROOT', 'MIDP', 'RADI',
                     'PAD\x00', 'NONC', 'MINT', 'MAXT', 'PUBK', 'VER\x00',
-                    'DTAI', 'DUT1', 'LEAP']
+                    'DTAI', 'DUT1', 'LEAP', 'ZZZZ']
             parent_tags = ['SREP', 'CERT', 'DELE']
             if self.contains_tag(key):
                 raise RoughtimeError('Encountered duplicate tag: %s' % key)
@@ -933,7 +938,7 @@ class RoughtimePacket(RoughtimeTag):
         if packetlen >= 1024:
             return
         padlen = 1016 - packetlen
-        self.add_tag(RoughtimeTag('PAD\x00', b'\x00' * padlen))
+        self.add_tag(RoughtimeTag('ZZZZ', b'\x00' * padlen))
 
     @staticmethod
     def unpack_uint32(buf, offset):
