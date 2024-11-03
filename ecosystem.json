@@ -13,6 +13,18 @@
       ]
     },
     {
+      "name": "time.txryan.com",
+      "newver": true,
+      "publicKeyType": "ed25519",
+      "publicKey": "iBVjxg/1j7y1+kQUTBYdTabxCppesU/07D4PMDJk2WA=",
+      "addresses": [
+        {
+          "protocol": "udp",
+          "address": "time.txryan.com:2002"
+        }
+      ]
+    },
+    {
       "name": "roughtime.se",
       "publicKeyType": "ed25519",
       "publicKey": "S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=",
