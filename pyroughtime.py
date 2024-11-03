@@ -828,19 +828,14 @@ class RoughtimePacket(RoughtimeTag):
 
             value = packet[offset:end]
 
-            leaf_tags = ['SIG\x00', 'INDX', 'PATH', 'ROOT', 'MIDP', 'RADI',
-                    'PAD\x00', 'NONC', 'MINT', 'MAXT', 'PUBK', 'VER\x00',
-                    'DTAI', 'DUT1', 'LEAP', 'ZZZZ']
             parent_tags = ['SREP', 'CERT', 'DELE']
             if self.contains_tag(key):
                 raise RoughtimeError('Encountered duplicate tag: %s' % key)
-            if key in leaf_tags:
+            if key not in parent_tags:
                 self.add_tag(RoughtimeTag(key, packet[offset:end]))
-            elif key in parent_tags:
+            else:
                 # Unpack parent tags recursively.
                 self.add_tag(RoughtimePacket(key, packet[offset:end]))
-            else:
-                raise RoughtimeError('Encountered unknown tag: %s' % key)
 
     def add_tag(self, tag):
         '''
