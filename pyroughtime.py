@@ -330,7 +330,7 @@ class RoughtimeClient:
         if midp == 0xffffffffffffffff:
             return None
         if midp < 30000000000000000:
-            return datetime.datetime.utcfromtimestamp(midp)
+            return datetime.datetime.fromtimestamp(midp, datetime.UTC)
         ret = datetime.datetime.fromordinal(678576 + (midp >> 40))
         ret += datetime.timedelta(microseconds=midp&0xffffffffff)
         return ret
@@ -604,11 +604,8 @@ class RoughtimeClient:
         ret['midp'] = midp
         ret['radi'] = radi
         ret['datetime'] = RoughtimeClient.midp_to_datetime(midp)
-        timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S.%f')
-        if radi < 10000:
-            ret['prettytime'] = "%s UTC (+/- %.3f ms)" % (timestr, radi / 1E3)
-        else:
-            ret['prettytime'] = "%s UTC (+/- %.3f  s)" % (timestr, radi / 1E6)
+        timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S')
+        ret['prettytime'] = "%s UTC (+/- % 2d s)" % (timestr, radi)
         ret['rtt'] = rtt
         ret['mint'] = RoughtimeClient.midp_to_datetime(mint)
         ret['maxt'] = RoughtimeClient.midp_to_datetime(maxt)
