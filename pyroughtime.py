@@ -330,7 +330,7 @@ class RoughtimeClient:
         if midp == 0xffffffffffffffff:
             return None
         if midp < 30000000000000000:
-            return datetime.datetime.utcfromtimestamp(midp / 1E6)
+            return datetime.datetime.utcfromtimestamp(midp)
         ret = datetime.datetime.fromordinal(678576 + (midp >> 40))
         ret += datetime.timedelta(microseconds=midp&0xffffffffff)
         return ret
