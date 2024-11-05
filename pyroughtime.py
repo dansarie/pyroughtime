@@ -288,7 +288,7 @@ class RoughtimeServer:
                             + srep.get_value_bytes()))
             reply.add_tag(sig)
 
-            ref.sock.sendto(reply.get_value_bytes(), addr)
+            ref.sock.sendto(reply.get_value_bytes(packet_header=True), addr)
 
     @staticmethod
     def create_key() -> (str, str):
@@ -421,7 +421,7 @@ class RoughtimeClient:
             break
         if rtt >= timeout:
             raise RoughtimeError('Timeout while waiting for reply.')
-        reply = RoughtimePacket(packet=data)
+        reply = RoughtimePacket(packet=data, expect_header=True)
 
         return reply, rtt, data
 
@@ -466,7 +466,7 @@ class RoughtimeClient:
             break
         if rtt >= timeout:
             raise RoughtimeError('Timeout while waiting for reply.')
-        reply = RoughtimePacket(packet=data)
+        reply = RoughtimePacket(packet=data, expect_header=True)
 
         return reply, rtt, data
 
