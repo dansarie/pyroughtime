@@ -45,6 +45,14 @@ Delegate key validity end:   2022-01-01 00:00:00.000000
 Merkle tree path length: 0
 ```
 
+A testing server can also be started from the command line.
+```console
+$ ./pyroughtime.py -t AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+Roughtime server started on port 2002
+Public key: O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=
+Press enter to stop...
+```
+
 ## License
 
 This project is licensed under the GNU General Public License - see the [LICENSE](LICENSE)

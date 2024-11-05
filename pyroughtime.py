@@ -997,6 +997,8 @@ if __name__ == '__main__':
             help='query a single server')
     group.add_argument('-l', metavar='file',
             help='query servers listed in a JSON file')
+    group.add_argument('-t', metavar='b64key',
+            help='start a server for testing with the specified private key')
 
     args = parser.parse_args()
 
@@ -1026,6 +1028,20 @@ if __name__ == '__main__':
                     repl['maxt'].strftime('%Y-%m-%d %H:%M:%S'))
         print('Merkle tree path length: %d' % repl['pathlen'])
         sys.exit(0)
+    elif args.t is not None:
+        priv = args.t
+        publ = base64.b64encode(eddsa.import_private_key(
+                base64.b64decode(priv)).public_key()
+                .export_key(format='raw')).decode('ascii')
+        cert, dpriv = RoughtimeServer.create_delegate_key(priv)
+        serv = RoughtimeServer(publ, cert, dpriv)
+        serv.start('0.0.0.0', 2002)
+        print('Roughtime server started on port 2002')
+        print('Public key: %s' % publ)
+        input('Press enter to stop...')
+        serv.stop()
+        sys.exit(0)
+
 
     # Query a list of servers in a JSON file.
     with open(args.l) as f:
