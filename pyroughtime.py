@@ -215,12 +215,18 @@ class RoughtimeServer:
                 print('Request missing NONC tag.')
                 continue
             ver = request.get_tag('VER')
-            if ver.get_value_len() != 4:
+            if ver.get_value_len() % 4 != 0:
                 print('Wrong VER value length: %d' % ver.get_value_len())
                 continue
-            if ver.to_int() != RoughtimeServer.ROUGHTIME_VERSION:
-                print('Wrong request version: %d (0x%08x)'
-                      % (ver.to_int(), ver.to_int()))
+            version_ok = False
+            ver_bytes = ver.get_value_bytes()
+            for n in range(ver.get_value_len() // 4):
+                if RoughtimePacket.unpack_uint32(ver_bytes, n * 4) == \
+                        RoughtimeServer.ROUGHTIME_VERSION:
+                    version_ok = True
+                    break
+            if not version_ok:
+                print('No matching version in request')
                 continue
 
             # Ensure request contains a proper NONC tag.
