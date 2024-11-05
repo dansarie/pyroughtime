@@ -832,13 +832,13 @@ class RoughtimePacket(RoughtimeTag):
         if len(packet) % 4 != 0:
             raise RoughtimeError('Packet size is not a multiple of four.')
 
-        if expect_header:
-            if RoughtimePacket.unpack_uint64(packet, 0) != \
-                    RoughtimeServer.ROUGHTIME_HEADER:
-                raise RoughtimeError('Missing packet header.')
+        if RoughtimePacket.unpack_uint64(packet, 0) == \
+                RoughtimeServer.ROUGHTIME_HEADER:
             if len(packet) - 12 != RoughtimePacket.unpack_uint32(packet, 8):
                 raise RoughtimeError('Bad packet size.')
             packet = packet[12:]
+        elif expect_header:
+            raise RoughtimeError('Missing packet header.')
 
         num_tags = RoughtimePacket.unpack_uint32(packet, 0)
         headerlen = 8 * num_tags
