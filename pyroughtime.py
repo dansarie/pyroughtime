@@ -991,9 +991,6 @@ if __name__ == '__main__':
             'to query either a single Roughtime server specified on the '
             'command line, or a number of servers listed in a JSON file.')
 
-    parser.add_argument('-o', '--oldver', action='store_true',
-            help='use pre-IETF protocol by default')
-
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('-s', nargs=3,
             metavar=('address', 'port', 'b64key'),
