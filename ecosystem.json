@@ -4,7 +4,6 @@
       "name": "Cloudflare-Roughtime-2",
       "publicKeyType": "ed25519",
       "publicKey": "0GD7c3yP8xEc4Zl2zeuN2SlLvDVVocjsPSL8/Rl/7zg=",
-      "newver": true,
       "addresses": [
         {
           "protocol": "udp",
@@ -14,7 +13,6 @@
     },
     {
       "name": "time.txryan.com",
-      "newver": true,
       "publicKeyType": "ed25519",
       "publicKey": "iBVjxg/1j7y1+kQUTBYdTabxCppesU/07D4PMDJk2WA=",
       "addresses": [
@@ -28,7 +26,6 @@
       "name": "roughtime.se",
       "publicKeyType": "ed25519",
       "publicKey": "S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=",
-      "newver": true,
       "addresses": [
         {
           "protocol": "udp",
@@ -40,7 +37,6 @@
       "name": "sth1.roughtime.netnod.se",
       "publicKeyType": "ed25519",
       "publicKey": "9l1JN4HakGnG44yyqyNNCb0HN0XfsysBbnl/kbZoZDc=",
-      "newver": true,
       "addresses": [
         {
           "protocol": "udp",
@@ -52,7 +48,6 @@
       "name": "sth2.roughtime.netnod.se",
       "publicKeyType": "ed25519",
       "publicKey": "T/xxX4ERUBAOpt64Z8phWamKsASZxJ0VWuiPm3GS/8g=",
-      "newver": true,
       "addresses": [
         {
           "protocol": "udp",
@@ -64,7 +59,6 @@
       "name": "lab.roughtime.netnod.se",
       "publicKeyType": "ed25519",
       "publicKey": "tAPsQc3D36mJPOX1/LLNbV0M3fuTPjwW54mGvw+V1hE=",
-      "newver": true,
       "addresses": [
         {
           "protocol": "udp",
