@@ -505,11 +505,6 @@ class RoughtimeClient:
                                  validity for the delegate key.
                     pathlen    - the length of the Merkle tree path sent in
                                  the server's reply (0 <= pathlen <= 32).
-                    dtai       - an integer representing the current TAI - UTC
-                                 value in seconds.
-                    leap       - a list of integers representing the modified
-                                 julian dates of leap second events reported
-                                 by the server.
                     ver        - a string representing the server's reported
                                  version. Only present if the server sent a
                                  VER tag in the response.
@@ -565,8 +560,6 @@ class RoughtimeClient:
 
         try:
             dsig = cert.get_tag('SIG').get_value_bytes()
-            dtai = srep.get_tag('DTAI')
-            leap = srep.get_tag('LEAP')
             midp = srep.get_tag('MIDP').to_int()
             radi = srep.get_tag('RADI').to_int()
             root = srep.get_tag('ROOT').get_value_bytes()
@@ -582,16 +575,6 @@ class RoughtimeClient:
 
         except:
             raise RoughtimeError('Missing tag in server reply or parse error.')
-
-        if dtai != None:
-            dtai = dtai.to_int()
-
-        if leap != None:
-            leapbytes = leap.get_value_bytes()
-            leap = []
-            while len(leapbytes) > 0:
-                leap.append(struct.unpack('<I', leapbytes[:4])[0] & 0x7fffffff)
-                leapbytes = leapbytes[4:]
 
         # Verify signature of DELE with long term certificate.
         try:
@@ -657,10 +640,6 @@ class RoughtimeClient:
         ret['mint'] = RoughtimeClient.timestamp_to_datetime(mint)
         ret['maxt'] = RoughtimeClient.timestamp_to_datetime(maxt)
         ret['pathlen'] = pathlen
-        if dtai != None:
-            ret['dtai'] = dtai
-        if leap != None:
-            ret['leap'] = leap
         if ver != None:
             if ver & 0x80000000 != 0:
                 ret['ver'] = 'draft-%02d' % (ver & 0x7fffffff)
@@ -1020,8 +999,6 @@ if __name__ == '__main__':
         print('%s (RTT: %.1f ms)' % (repl['prettytime'], repl['rtt'] * 1000))
         if 'ver' in repl:
             print('Server version: ' + repl['ver'])
-        if 'dtai' in repl:
-            print('TAI - UTC = %ds' % repl['dtai'])
         if 'leap' in repl:
             if len(repl['leap']) == 0:
                 print('Leap events: None')
