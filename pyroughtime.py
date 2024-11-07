@@ -384,8 +384,11 @@ class RoughtimeClient:
         self.max_history_len = max_history_len
 
     @staticmethod
-    def midp_to_datetime(midp: int) -> datetime.datetime:
-        return datetime.datetime.fromtimestamp(midp, datetime.UTC)
+    def timestamp_to_datetime(ts: int) -> datetime.datetime:
+        # Underlying implementation is limited to 32 bits.
+        if ts > 0xffffffff:
+            ts = 0xffffffff
+        return datetime.datetime.fromtimestamp(ts, datetime.UTC)
 
     @staticmethod
     def __udp_query(address: str, port: int, packet: bytes,
@@ -533,7 +536,8 @@ class RoughtimeClient:
         ha.update(pubkey_bytes)
         srvhash = ha.digest()[:32]
         packet.add_tag(RoughtimeTag('SRV', srvhash))
-        packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(0x8000000B)))
+        packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(
+                RoughtimeServer.ROUGHTIME_VERSION)))
         packet.add_tag(RoughtimeTag('NONC', nonce))
         if protocol == 'udp':
             packet.add_padding()
@@ -646,12 +650,12 @@ class RoughtimeClient:
         ret = dict()
         ret['midp'] = midp
         ret['radi'] = radi
-        ret['datetime'] = RoughtimeClient.midp_to_datetime(midp)
+        ret['datetime'] = RoughtimeClient.timestamp_to_datetime(midp)
         timestr = ret['datetime'].strftime('%Y-%m-%d %H:%M:%S')
         ret['prettytime'] = '%s UTC (+/- % 2d s)' % (timestr, radi)
         ret['rtt'] = rtt
-        ret['mint'] = RoughtimeClient.midp_to_datetime(mint)
-        ret['maxt'] = RoughtimeClient.midp_to_datetime(maxt)
+        ret['mint'] = RoughtimeClient.timestamp_to_datetime(mint)
+        ret['maxt'] = RoughtimeClient.timestamp_to_datetime(maxt)
         ret['pathlen'] = pathlen
         if dtai != None:
             ret['dtai'] = dtai
@@ -688,13 +692,13 @@ class RoughtimeClient:
         invalid_pairs = []
         for i in range(len(self.prev_replies)):
             packet_i = RoughtimePacket(packet=self.prev_replies[i][2])
-            midp_i = RoughtimeClient.midp_to_datetime(\
+            midp_i = RoughtimeClient.timestamp_to_datetime(\
                     packet_i.get_tag('SREP').get_tag('MIDP').to_int())
             radi_i = datetime.timedelta(microseconds=packet_i.get_tag('SREP')\
                     .get_tag('RADI').to_int())
             for k in range(i + 1, len(self.prev_replies)):
                 packet_k = RoughtimePacket(packet=self.prev_replies[k][2])
-                midp_k = RoughtimeClient.midp_to_datetime(\
+                midp_k = RoughtimeClient.timestamp_to_datetime(\
                         packet_k.get_tag('SREP').get_tag('MIDP').to_int())
                 radi_k = datetime.timedelta(microseconds=\
                         packet_k.get_tag('SREP').get_tag('RADI').to_int())
