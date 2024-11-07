@@ -1,17 +1,54 @@
-# pyroughtime
+# Pyroughtime
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-An experimental Roughtime client and server implementation in Python 3 using the IETF draft at
-<https://datatracker.ietf.org/doc/html/draft-ietf-ntp-roughtime-11>.
+A Python library and command line utility for Roughtime, which is a protocol for rough time
+synchronization and timestamping. Pyroughtime makes it possible to query Roughtime servers for the
+current time. Response signatures are validated against servers' long-time keys. When multiple
+servers are queried at once, Pyroughtime ensures that the time responses are well-ordered.
+
+In addition to a Roughtime client, Pyroughtime also contains a simple server implementation that can
+be used for testing and validation.
+
+Currently, Pyroughtime implements the version of the Roughtime protocol described by
+[draft-ietf-ntp-roughtime-11](https://datatracker.ietf.org/doc/html/draft-ietf-ntp-roughtime-11).
 
 ## Dependencies
 
 * [PyCryptodome](https://github.com/Legrandin/pycryptodome)
 
-## Example
+## Usage
+
+### Querying a single server
+
+The `-s` flag is used to query a single server. It takes three arguments: a server address, a server
+port, and the server's long-term public key in base64 format.
+
+```console
+$ ./pyroughtime.py -s roughtime.se 2002 S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=
+2024-11-07 20:23:52 UTC (+/-  3 s) (RTT: 36.9 ms)
+Server version: draft-11
+Delegate key validity start: 2024-11-05 00:00:00
+Delegate key validity end:   2025-12-31 00:00:00
+Merkle tree path length: 0
+```
+
+### Querying multiple servers
+
+The `-l` flag is used to query multiple servers. It takes a single argument: the name of an
+ecosystem file in JSON format.
+
+```console
+$ ./pyroughtime.py -l ecosystem.json
+time.txryan.com:          2024-11-07 20:37:53 UTC (+/-  1 s) RTT:  212.5 ms Version: draft-11
+roughtime.se:             2024-11-07 20:37:53 UTC (+/-  3 s) RTT:   12.7 ms Version: draft-11
+No inconsistent replies detected.
+```
 
 ### From Python
+
+The RoughtimeClient class can be used to query servers from Python. Replies to queries are return as
+dictionary objects.
 
 ```python
 from pyroughtime import RoughtimeClient, RoughtimeServer
@@ -22,30 +59,11 @@ serv.stop()
 print(reply['prettytime'])
 ```
 
-### From console
-```console
-$ ./pyroughtime.py -l ecosystem.json
-Caesium:                  2020-12-23 16:26:16.765275 UTC (+/- 1.000  s) (RTT:  100.5 ms)
-Chainpoint-Roughtime:     2020-12-23 16:26:16.973777 UTC (+/- 1.000  s) (RTT:  288.9 ms)
-Cloudflare-Roughtime:     2020-12-23 16:26:17.267000 UTC (+/- 1.000  s) (RTT:    3.7 ms)
-Google-Sandbox-Roughtime: 2020-12-23 16:26:17.307968 UTC (+/- 1.000  s) (RTT:   16.1 ms)
-int08h-Roughtime:         2020-12-23 16:26:17.401888 UTC (+/- 1.000  s) (RTT:  177.0 ms)
-roughtime.se:             2020-12-23 16:26:17.574568 UTC (+/- 0.000 ms) (RTT:   26.1 ms)
-sjwheel:                  2020-12-23 16:26:17.747868 UTC (+/- 1.000  s) (RTT:  485.6 ms)
-No inconsistent replies detected.
-$ ./pyroughtime.py -s roughtime.se 2002 S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=
-2020-12-23 16:26:44.499730 UTC (+/- 0.000 ms) (RTT: 25.7 ms)
-TAI - UTC = 37s
-Leap events:
-  2017-01-01
-  2015-07-01
-  2012-07-01
-Delegate key validity start: 2020-12-22 00:00:00.000000
-Delegate key validity end:   2022-01-01 00:00:00.000000
-Merkle tree path length: 0
-```
+### Running a server
 
-A testing server can also be started from the command line.
+The `-t` flag is used to start a server. It takes a single argument: the server's long-term private
+key in base64 format. A delegate key is automatically generated.
+
 ```console
 $ ./pyroughtime.py -t AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 Roughtime server started on port 2002
@@ -53,7 +71,14 @@ Public key: O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=
 Press enter to stop...
 ```
 
-## License
+## License and Copyright
 
-This project is licensed under the GNU General Public License - see the [LICENSE](LICENSE)
-file for details.
+Copyright (C) 2019-2024 Marcus Dansarie
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+[the GNU General Public License](LICENSE) for more details.
