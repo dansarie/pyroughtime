@@ -47,16 +47,20 @@ No inconsistent replies detected.
 
 ### From Python
 
-The RoughtimeClient class can be used to query servers from Python. Replies to queries are return as
-dictionary objects.
+The RoughtimeClient class can be used to query servers. The client automatically chains all replies,
+making it possible to generate verifiable malfeasance reports. Replies to queries are returned
+as RoughtimeResult objects which can be queried for information about the time response.
 
 ```python
 from pyroughtime import RoughtimeClient, RoughtimeServer
 serv, publ = RoughtimeServer.test_server()
 cl = RoughtimeClient()
-reply = cl.query('127.0.0.1', 2002, publ)
+reply1 = cl.query('127.0.0.1', 2002, publ)
+reply2 = cl.query('roughtime.se', 2002, 'S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=')
 serv.stop()
-print(reply['prettytime'])
+print(reply1) # Print a string representation of the received time.
+time = reply1.datetime() # Get the received midpoint as a datetime instance.
+report = cl.get_malfeasance_report() # Get a malfeasance report in JSON format.
 ```
 
 ### Running a server
