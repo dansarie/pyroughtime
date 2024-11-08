@@ -30,14 +30,17 @@ import struct
 import sys
 import threading
 import time
+from typing import Literal
 
 from Cryptodome.Hash import SHA512
 from Cryptodome.Signature import eddsa
+
 
 class RoughtimeError(Exception):
     'Represents an error that has occured in the Roughtime client.'
     def __init__(self, message: str) -> None:
         super(RoughtimeError, self).__init__(message)
+
 
 class RoughtimeServer:
     '''
@@ -60,6 +63,7 @@ class RoughtimeServer:
     SIGNED_RESPONSE_CONTEXT = b'RoughTime v1 response signature\x00'
     ROUGHTIME_HEADER = 0x4d49544847554f52
     ROUGHTIME_VERSION = 0x8000000b
+
     def __init__(self, publ: str, cert: str, dpriv: str, radi: int = 3) \
             -> None:
         publ = base64.b64decode(publ)
@@ -78,9 +82,9 @@ class RoughtimeServer:
         try:
             ver = eddsa.new(pubkey, 'rfc8032')
             ver.verify(RoughtimeServer.CERTIFICATE_CONTEXT
-                       + self.cert.get_tag('DELE').get_value_bytes(),
-                       self.cert.get_tag('SIG').get_value_bytes())
-        except:
+                       + dele.get_value_bytes(),
+                       sig.get_value_bytes())
+        except Exception:
             raise RoughtimeError('CERT was not signed with publ.')
 
         # Calculate SRV tag value.
@@ -90,16 +94,16 @@ class RoughtimeServer:
         self.srvval = ha.digest()[:32]
 
         # Ensure that the CERT and private key are a valid pair.
-        pubkey = eddsa.import_public_key(self.cert.get_tag('DELE') \
-                .get_tag('PUBK').get_value_bytes())
+        pubkey = eddsa.import_public_key(dele
+                                         .get_tag('PUBK').get_value_bytes())
         self.sign = eddsa.new(self.dpriv, 'rfc8032')
         testsign = self.sign.sign(RoughtimeServer.SIGNED_RESPONSE_CONTEXT)
         try:
             ver = eddsa.new(pubkey, 'rfc8032')
             ver.verify(RoughtimeServer.SIGNED_RESPONSE_CONTEXT, testsign)
-        except:
+        except Exception:
             raise RoughtimeError('CERT and dpriv arguments are not a valid '
-                    + 'certificate pair.')
+                                 + 'certificate pair.')
 
     def start(self, ip: str, port: int) -> None:
         '''
@@ -114,12 +118,12 @@ class RoughtimeServer:
         self.sock.settimeout(0.001)
         self.run = True
         self.thread = threading.Thread(target=RoughtimeServer.__recv_thread,
-                args=(self,))
+                                       args=(self,))
         self.thread.start()
 
     def stop(self) -> None:
         'Stops the Roughtime server.'
-        if self.run == False:
+        if not self.run:
             return
         self.run = False
         self.thread.join()
@@ -143,7 +147,7 @@ class RoughtimeServer:
                            order: int | None = None) -> list[bytes]:
         'Builds a Merkle tree.'
         # First call:  and calculate order
-        if prev == None:
+        if prev is None:
             # Hash nonces.
             hashes = []
             for n in nonces:
@@ -255,7 +259,7 @@ class RoughtimeServer:
             reply.add_tag(ref.cert)
             reply.add_tag(request.get_tag('NONC'))
             reply.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(
-                    RoughtimeServer.ROUGHTIME_VERSION)))
+                RoughtimeServer.ROUGHTIME_VERSION)))
 
             # Single nonce Merkle tree.
             indx = RoughtimeTag('INDX')
@@ -271,8 +275,8 @@ class RoughtimeServer:
             srep.add_tag(root)
 
             midp = RoughtimeTag('MIDP')
-            midp.set_value_uint64(RoughtimeServer.__datetime_to_timestamp(\
-                    datetime.datetime.now()))
+            midp.set_value_uint64(RoughtimeServer.__datetime_to_timestamp(
+                datetime.datetime.now()))
             srep.add_tag(midp)
 
             radi = RoughtimeTag('RADI')
@@ -284,8 +288,8 @@ class RoughtimeServer:
             reply.add_tag(srep)
 
             sig = RoughtimeTag('SIG', ref.sign.sign(
-                    RoughtimeServer.SIGNED_RESPONSE_CONTEXT
-                            + srep.get_value_bytes()))
+                RoughtimeServer.SIGNED_RESPONSE_CONTEXT
+                + srep.get_value_bytes()))
             reply.add_tag(sig)
 
             ref.sock.sendto(reply.get_value_bytes(packet_header=True), addr)
@@ -301,9 +305,9 @@ class RoughtimeServer:
         '''
         priv = secrets.token_bytes(32)
         publ = eddsa.import_private_key(priv).public_key() \
-               .export_key(format='raw')
-        return base64.b64encode(priv).decode('ascii'), \
-               base64.b64encode(publ).decode('ascii')
+                                             .export_key(format='raw')
+        return (base64.b64encode(priv).decode('ascii'),
+                base64.b64encode(publ).decode('ascii'))
 
     @staticmethod
     def create_delegate_key(priv: str, mint: int = None, maxt: int = None) \
@@ -322,17 +326,17 @@ class RoughtimeServer:
             cert (bytes): A base64 encoded Roughtime CERT packet.
             dpriv (bytes): A base64 encoded ed25519 private key.
         '''
-        if mint == None:
-            mint = RoughtimeServer.__datetime_to_timestamp(\
-                    datetime.datetime.now())
-        if maxt == None or maxt <= mint:
-            maxt = RoughtimeServer.__datetime_to_timestamp(\
-                    datetime.datetime.now() + datetime.timedelta(days=30))
+        if mint is None:
+            mint = RoughtimeServer.__datetime_to_timestamp(
+                datetime.datetime.now())
+        if maxt is None or maxt <= mint:
+            maxt = RoughtimeServer.__datetime_to_timestamp(
+                datetime.datetime.now() + datetime.timedelta(days=30))
         priv = base64.b64decode(priv)
         priv = eddsa.new(eddsa.import_private_key(priv), 'rfc8032')
         dpriv = secrets.token_bytes(32)
         dpubl = eddsa.import_private_key(dpriv).public_key() \
-                .export_key(format='raw')
+                                               .export_key(format='raw')
         mint_tag = RoughtimeTag('MINT')
         maxt_tag = RoughtimeTag('MAXT')
         mint_tag.set_value_uint64(mint)
@@ -345,15 +349,15 @@ class RoughtimeServer:
         dele.add_tag(pubk)
 
         delesig = priv.sign(RoughtimeServer.CERTIFICATE_CONTEXT
-                + dele.get_value_bytes())
+                            + dele.get_value_bytes())
         sig = RoughtimeTag('SIG', delesig)
 
         cert = RoughtimePacket('CERT')
         cert.add_tag(dele)
         cert.add_tag(sig)
 
-        return base64.b64encode(cert.get_value_bytes()), \
-                base64.b64encode(dpriv)
+        return (base64.b64encode(cert.get_value_bytes()),
+                base64.b64encode(dpriv))
 
     @staticmethod
     def test_server() -> RoughtimeServer:
@@ -370,6 +374,7 @@ class RoughtimeServer:
         serv = RoughtimeServer(publ, cert, dpriv)
         serv.start('127.0.0.1', 2002)
         return serv, publ
+
 
 class RoughtimeClient:
     '''
@@ -399,7 +404,7 @@ class RoughtimeClient:
             sock.settimeout(0.001)
             try:
                 sock.sendto(packet, (sockaddr[0], sockaddr[1]))
-            except Exception as ex:
+            except Exception:
                 # Try next IP on failure.
                 sock.close()
                 continue
@@ -438,7 +443,7 @@ class RoughtimeClient:
             try:
                 sock.connect((sockaddr[0], sockaddr[1]))
                 sock.sendall(packet)
-            except Exception as ex:
+            except Exception:
                 # Try next IP on failure.
                 sock.close()
                 continue
@@ -532,7 +537,7 @@ class RoughtimeClient:
         srvhash = ha.digest()[:32]
         packet.add_tag(RoughtimeTag('SRV', srvhash))
         packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(
-                RoughtimeServer.ROUGHTIME_VERSION)))
+            RoughtimeServer.ROUGHTIME_VERSION)))
         packet.add_tag(RoughtimeTag('NONC', nonce))
         if protocol == 'udp':
             packet.add_padding()
@@ -546,10 +551,10 @@ class RoughtimeClient:
         # Get reply tags.
         srep = reply.get_tag('SREP')
         cert = reply.get_tag('CERT')
-        if srep == None or cert == None:
+        if srep is None or cert is None:
             raise RoughtimeError('Missing tag in server reply.')
         dele = cert.get_tag('DELE')
-        if dele == None:
+        if dele is None:
             raise RoughtimeError('Missing tag in server reply.')
         if not reply.contains_tag('NONC'):
             raise RoughtimeError('Missing tag in server reply.')
@@ -570,19 +575,19 @@ class RoughtimeClient:
             mint = dele.get_tag('MINT').to_int()
             maxt = dele.get_tag('MAXT').to_int()
             ver = reply.get_tag('VER')
-            if ver != None:
+            if ver is not None:
                 ver = ver.to_int()
 
-        except:
+        except Exception:
             raise RoughtimeError('Missing tag in server reply or parse error.')
 
         # Verify signature of DELE with long term certificate.
         try:
             pubkey.verify(RoughtimeServer.CERTIFICATE_CONTEXT
                           + dele.get_received(), dsig)
-        except:
+        except Exception:
             raise RoughtimeError('Verification of long term certificate '
-                    + 'signature failed.')
+                                 + 'signature failed.')
 
         # Verify that DELE timestamps are consistent with MIDP value.
         if mint > midp or maxt < midp:
@@ -596,8 +601,8 @@ class RoughtimeClient:
         ha.update(b'\x00' + nonce)
         curr_hash = ha.digest()[:node_size]
         if len(path) % node_size != 0:
-            raise RoughtimeError('PATH length not a multiple of %d.' \
-                    % node_size)
+            raise RoughtimeError('PATH length not a multiple of %d.'
+                                 % node_size)
         pathlen = len(path) // node_size
         if pathlen > 32:
             raise RoughtimeError('Too many paths in Merkle tree.')
@@ -621,8 +626,8 @@ class RoughtimeClient:
         delekey = eddsa.new(eddsa.import_public_key(pubk), 'rfc8032')
         try:
             delekey.verify(RoughtimeServer.SIGNED_RESPONSE_CONTEXT
-                    + srep.get_received(), sig)
-        except:
+                           + srep.get_received(), sig)
+        except Exception:
             raise RoughtimeError('Bad DELE key signature.')
 
         self.prev_replies.append((nonce, blind, data))
@@ -640,7 +645,7 @@ class RoughtimeClient:
         ret['mint'] = RoughtimeClient.timestamp_to_datetime(mint)
         ret['maxt'] = RoughtimeClient.timestamp_to_datetime(maxt)
         ret['pathlen'] = pathlen
-        if ver != None:
+        if ver is not None:
             if ver & 0x80000000 != 0:
                 ret['ver'] = 'draft-%02d' % (ver & 0x7fffffff)
             else:
@@ -671,19 +676,21 @@ class RoughtimeClient:
         invalid_pairs = []
         for i in range(len(self.prev_replies)):
             packet_i = RoughtimePacket(packet=self.prev_replies[i][2])
-            midp_i = RoughtimeClient.timestamp_to_datetime(\
-                    packet_i.get_tag('SREP').get_tag('MIDP').to_int())
-            radi_i = datetime.timedelta(microseconds=packet_i.get_tag('SREP')\
-                    .get_tag('RADI').to_int())
+            midp_i = RoughtimeClient.timestamp_to_datetime(
+                packet_i.get_tag('SREP').get_tag('MIDP').to_int())
+            radi_i = datetime.timedelta(
+                microseconds=packet_i.get_tag('SREP').get_tag('RADI').to_int())
             for k in range(i + 1, len(self.prev_replies)):
                 packet_k = RoughtimePacket(packet=self.prev_replies[k][2])
-                midp_k = RoughtimeClient.timestamp_to_datetime(\
-                        packet_k.get_tag('SREP').get_tag('MIDP').to_int())
-                radi_k = datetime.timedelta(microseconds=\
-                        packet_k.get_tag('SREP').get_tag('RADI').to_int())
+                midp_k = RoughtimeClient.timestamp_to_datetime(
+                    packet_k.get_tag('SREP').get_tag('MIDP').to_int())
+                radi_k = datetime.timedelta(
+                    microseconds=packet_k.get_tag('SREP').get_tag('RADI')
+                    .to_int())
                 if midp_i - radi_i > midp_k + radi_k:
                     invalid_pairs.append((i, k))
         return invalid_pairs
+
 
 class RoughtimeTag:
     '''
@@ -775,14 +782,14 @@ class RoughtimeTag:
     @staticmethod
     def tag_str_to_uint32(tag: str) -> bytes:
         'Converts a tag string to its uint32 representation.'
-        return struct.pack('BBBB', ord(tag[0]), ord(tag[1]), ord(tag[2]),
-                ord(tag[3]))
+        return struct.pack('BBBB',
+                           ord(tag[0]), ord(tag[1]), ord(tag[2]), ord(tag[3]))
 
     @staticmethod
     def tag_uint32_to_str(tag: bytes) -> str:
-        'Converts a tag uint32 to it\'s string representation.'
+        'Converts a tag uint32 to its string representation.'
         return chr(tag & 0xff) + chr((tag >> 8) & 0xff) \
-                + chr((tag >> 16) & 0xff) + chr(tag >> 24)
+            + chr((tag >> 16) & 0xff) + chr(tag >> 24)
 
     @staticmethod
     def uint32_to_bytes(val: int) -> str:
@@ -791,6 +798,7 @@ class RoughtimeTag:
     @staticmethod
     def uint64_to_bytes(val: int) -> str:
         return struct.pack('<Q', val)
+
 
 class RoughtimePacket(RoughtimeTag):
     '''
@@ -813,7 +821,7 @@ class RoughtimePacket(RoughtimeTag):
         self.packet = None
 
         # Return if there is no packet to parse.
-        if packet == None:
+        if packet is None:
             return
 
         self.packet = packet
@@ -840,7 +848,7 @@ class RoughtimePacket(RoughtimeTag):
                 offset = headerlen
             else:
                 offset = RoughtimePacket.unpack_uint32(packet, i * 4) \
-                        + headerlen
+                    + headerlen
             if offset > len(packet):
                 raise RoughtimeError('Bad packet size.')
 
@@ -849,15 +857,13 @@ class RoughtimePacket(RoughtimeTag):
                 end = len(packet)
             else:
                 end = RoughtimePacket.unpack_uint32(packet, (i + 1) * 4) \
-                        + headerlen
+                    + headerlen
             if end > len(packet):
                 raise RoughtimeError('Bad packet size.')
 
             # Tag key string.
             key = RoughtimeTag.tag_uint32_to_str(
-                    RoughtimePacket.unpack_uint32(packet, (num_tags + i) * 4))
-
-            value = packet[offset:end]
+                RoughtimePacket.unpack_uint32(packet, (num_tags + i) * 4))
 
             parent_tags = ['SREP', 'CERT', 'DELE']
             if self.contains_tag(key):
@@ -882,7 +888,7 @@ class RoughtimePacket(RoughtimeTag):
         for t in self.tags:
             if t.get_tag_str() == tag.get_tag_str():
                 raise RoughtimeError('Attempted to add two tags with same key '
-                        + 'to RoughtimePacket.')
+                                     + 'to RoughtimePacket.')
         self.tags.append(tag)
         self.tags.sort(key=lambda x: struct.unpack('<I', x.get_tag_bytes()))
 
@@ -974,20 +980,26 @@ class RoughtimePacket(RoughtimeTag):
         'Utility function for parsing server replies.'
         return struct.unpack('<Q', buf[offset:offset + 8])[0]
 
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Query Roughtime servers '
-            'for the current time and print results. This utility can be used '
-            'to query either a single Roughtime server specified on the '
-            'command line, or a number of servers listed in a JSON file.')
+    parser = argparse.ArgumentParser(
+        description='Query Roughtime servers for the current time and print '
+        'results. This utility can be used to query either a single Roughtime '
+        'server specified on the command line, or a number of servers listed '
+        'in a JSON file.')
 
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('-s', nargs=3,
-            metavar=('address', 'port', 'b64key'),
-            help='query a single server')
-    group.add_argument('-l', metavar='file',
-            help='query servers listed in a JSON file')
-    group.add_argument('-t', metavar='b64key',
-            help='start a server for testing with the specified private key')
+    group.add_argument('-s',
+                       nargs=3,
+                       metavar=('address', 'port', 'b64key'),
+                       help='query a single server')
+    group.add_argument('-l',
+                       metavar='file',
+                       help='query servers listed in a JSON file')
+    group.add_argument('-t',
+                       metavar='b64key',
+                       help='start a server for testing with the specified '
+                       + 'private key')
 
     args = parser.parse_args()
 
@@ -999,27 +1011,20 @@ if __name__ == '__main__':
         print('%s (RTT: %.1f ms)' % (repl['prettytime'], repl['rtt'] * 1000))
         if 'ver' in repl:
             print('Server version: ' + repl['ver'])
-        if 'leap' in repl:
-            if len(repl['leap']) == 0:
-                print('Leap events: None')
-            else:
-                print('Leap events: ')
-                for l in repl['leap']:
-                    print('  ' + datetime.date.fromordinal(678576 + l).isoformat())
         print('Delegate key validity start: %s' %
-                repl['mint'].strftime('%Y-%m-%d %H:%M:%S'))
+              repl['mint'].strftime('%Y-%m-%d %H:%M:%S'))
         if repl['maxt'] is None:
             print('Delegate key validity end:   indefinite')
         else:
             print('Delegate key validity end:   %s' %
-                    repl['maxt'].strftime('%Y-%m-%d %H:%M:%S'))
+                  repl['maxt'].strftime('%Y-%m-%d %H:%M:%S'))
         print('Merkle tree path length: %d' % repl['pathlen'])
         sys.exit(0)
     elif args.t is not None:
         priv = args.t
         publ = base64.b64encode(eddsa.import_private_key(
-                base64.b64decode(priv)).public_key()
-                .export_key(format='raw')).decode('ascii')
+            base64.b64decode(priv)).public_key()
+            .export_key(format='raw')).decode('ascii')
         cert, dpriv = RoughtimeServer.create_delegate_key(priv)
         serv = RoughtimeServer(publ, cert, dpriv)
         serv.start('0.0.0.0', 2002)
@@ -1028,7 +1033,6 @@ if __name__ == '__main__':
         input('Press enter to stop...')
         serv.stop()
         sys.exit(0)
-
 
     # Query a list of servers in a JSON file.
     with open(args.l) as f:
@@ -1051,7 +1055,7 @@ if __name__ == '__main__':
             else:
                 ver = '?'
             print('%s:%s%s RTT: %6.1f ms Version: %s' % (server['name'],
-                    space, repl['prettytime'], repl['rtt'] * 1000, ver))
+                  space, repl['prettytime'], repl['rtt'] * 1000, ver))
         except Exception as ex:
             print('%s:%sException: %s' % (server['name'], space, ex))
             continue
