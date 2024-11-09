@@ -2,10 +2,11 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-A Python library and command line utility for Roughtime, which is a protocol for rough time
-synchronization and timestamping. Pyroughtime makes it possible to query Roughtime servers for the
-current time. Response signatures are validated against servers' long-time keys. When multiple
-servers are queried at once, Pyroughtime ensures that the time responses are well-ordered.
+Pyroughtime is a Python library and command line utility for Roughtime, which is a protocol for
+rough time synchronization and timestamping. Pyroughtime makes it possible to query Roughtime
+servers for the current time. Response signatures are validated against servers' long-time keys,
+ensuring that they are authentic. By querying multiple servers, Pyroughtime can detect incorrect
+time responses sent by misbehaving or malfunctioning time servers.
 
 In addition to a Roughtime client, Pyroughtime also contains a simple server implementation that can
 be used for testing and validation.
