@@ -38,7 +38,7 @@ from Cryptodome.Signature import eddsa
 
 class RoughtimeError(Exception):
     'Represents an error that has occured in the Roughtime client.'
-    def __init__(self: RoughtimeError, message: str) -> None:
+    def __init__(self, message: str) -> None:
         super(RoughtimeError, self).__init__(message)
 
 
@@ -76,7 +76,7 @@ class RoughtimeResult:
                  ver (int): the server's reported version.
     '''
 
-    def __init__(self: RoughtimeResult,
+    def __init__(self,
                  publ: str,
                  nonce: str,
                  blind: str,
@@ -104,7 +104,7 @@ class RoughtimeResult:
         self._pathlen = pathlen
         self._ver = ver
 
-    def __str__(self: RoughtimeResult) -> str:
+    def __str__(self) -> str:
         '''
         Returns:
             A string representation of the returned time and radius that can be
@@ -113,7 +113,7 @@ class RoughtimeResult:
         '''
         return self.prettytime()
 
-    def public_key(self: RoughtimeResult) -> str:
+    def public_key(self) -> str:
         '''
         Returns:
             The public key used to validate the query result, as a
@@ -121,14 +121,14 @@ class RoughtimeResult:
         '''
         return self._publ
 
-    def nonce(self: RoughtimeResult) -> str:
+    def nonce(self) -> str:
         '''
         Returns:
             The nonce sent in the request, as a base64-encoded string.
         '''
         return self._nonce
 
-    def blind(self: RoughtimeResult) -> str:
+    def blind(self) -> str:
         '''
         Returns:
             The blind used to generate the nonce for this request from a
@@ -136,21 +136,21 @@ class RoughtimeResult:
         '''
         return self._blind
 
-    def request_packet(self: RoughtimeResult) -> bytes:
+    def request_packet(self) -> bytes:
         '''
         Returns:
             The request packet sent to the server in this request.
         '''
         return self._reqdata
 
-    def result_packet(self: RoughtimeResult) -> bytes:
+    def result_packet(self) -> bytes:
         '''
         Returns:
             The result packet sent from the server in reply the request.
         '''
         return self._resdata
 
-    def prettytime(self: RoughtimeResult) -> str:
+    def prettytime(self) -> str:
         '''
         Returns:
             A nice-looking string representation of the time and radius
@@ -160,7 +160,7 @@ class RoughtimeResult:
         timestr = self.datetime().strftime('%Y-%m-%d %H:%M:%S')
         return '%s UTC (+/- % 2d s)' % (timestr, self.radi())
 
-    def midp(self: RoughtimeResult) -> int:
+    def midp(self) -> int:
         '''
         Returns:
             The midpoint timestamp in seconds since the Posix epoch at 00:00:00
@@ -169,7 +169,7 @@ class RoughtimeResult:
         '''
         return self._midp
 
-    def radi(self: RoughtimeResult) -> int:
+    def radi(self) -> int:
         '''
         Returns:
             The radius returned by the server, indicating guaranteed accuracy
@@ -177,14 +177,14 @@ class RoughtimeResult:
         '''
         return self._radi
 
-    def datetime(self: RoughtimeResult) -> datetime.datetime:
+    def datetime(self) -> datetime.datetime:
         '''
         Returns:
             A datetime object representing the midpoint returned by the server.
         '''
         return RoughtimeClient.timestamp_to_datetime(self.midp())
 
-    def rtt(self: RoughtimeResult) -> float:
+    def rtt(self) -> float:
         '''
         Returns:
             The round trip time, i.e. the time elapsed between the request was
@@ -192,7 +192,7 @@ class RoughtimeResult:
         '''
         return (self._response_time - self._request_time) * 1E-9
 
-    def mint(self: RoughtimeResult):
+    def mint(self):
         '''
         Returns:
             The minimum timestamp for the delegated key used to sign the
@@ -201,7 +201,7 @@ class RoughtimeResult:
         '''
         return RoughtimeClient.timestamp_to_datetime(self._mint)
 
-    def maxt(self: RoughtimeResult):
+    def maxt(self):
         '''
         Returns:
             The maximum timestamp for the delegated key used to sign the
@@ -210,7 +210,7 @@ class RoughtimeResult:
         '''
         return RoughtimeClient.timestamp_to_datetime(self._maxt)
 
-    def pathlen(self: RoughtimeResult) -> int:
+    def pathlen(self) -> int:
         '''
         Returns:
             The length of the Merkle tree path sent in the server's reply.
@@ -218,7 +218,7 @@ class RoughtimeResult:
         '''
         return self._pathlen
 
-    def ver(self: RoughtimeResult) -> str:
+    def ver(self) -> str:
         '''
         Returns:
             A string representing the server's reported version.
@@ -251,8 +251,8 @@ class RoughtimeServer:
     _ROUGHTIME_HEADER = 0x4d49544847554f52
     _ROUGHTIME_VERSION = 0x8000000b
 
-    def __init__(self: RoughtimeServer, publ: str, cert: str, dpriv: str,
-                 radi: int = 3) -> None:
+    def __init__(self, publ: str, cert: str, dpriv: str, radi: int = 3) \
+            -> None:
         cert_bytes = b64decode(cert)
         if len(cert_bytes) != 152:
             raise RoughtimeError('Wrong CERT length.')
@@ -603,7 +603,7 @@ class RoughtimeClient:
     Args:
         max_history_len (int): The number of previous replies to keep.
     '''
-    def __init__(self: RoughtimeClient, max_history_len=100):
+    def __init__(self, max_history_len: int = 100):
         self._prev_replies = []  # type: list[RoughtimeResult]
         self._max_history_len = max_history_len
 
@@ -765,7 +765,7 @@ class RoughtimeClient:
         assert response_time is not None
         return reply, request_time, response_time, data
 
-    def query(self: RoughtimeClient,
+    def query(self,
               address: str,
               port: int,
               publ: str,
@@ -933,7 +933,7 @@ class RoughtimeClient:
 
         return result
 
-    def get_previous_replies(self: RoughtimeClient) -> list[RoughtimeResult]:
+    def get_previous_replies(self) -> list[RoughtimeResult]:
         '''
         Returns a list of previous replies recieved by the instance.
 
@@ -943,7 +943,7 @@ class RoughtimeClient:
         '''
         return self._prev_replies
 
-    def get_inconsistent_replies(self: RoughtimeClient) \
+    def get_inconsistent_replies(self) \
             -> list[tuple[RoughtimeResult, RoughtimeResult]]:
         '''
         Goes through the list of replies that have been received by the
@@ -978,7 +978,7 @@ class RoughtimeClient:
                     invalid_pairs.append((reply_i, reply_k))
         return invalid_pairs
 
-    def verify_replies(self: RoughtimeClient) -> bool:
+    def verify_replies(self) -> bool:
         '''
         Goes through the list of replies that have been received by the
         instance so far and verifies that there are no contradicting
@@ -991,7 +991,7 @@ class RoughtimeClient:
         '''
         return not self.get_inconsistent_replies()
 
-    def get_malfeasance_report(self: RoughtimeClient) -> str:
+    def get_malfeasance_report(self) -> str:
         '''
         Creates a Roughtime malfaesance report in JSON format. The report is
         created from the list of previous replies held by this instance. Note
@@ -1028,7 +1028,7 @@ class RoughtimeTag:
                 NULL characters.
         value (bytes): The tag's value.
     '''
-    def __init__(self: RoughtimeTag, key: str, value: bytes = b'') -> None:
+    def __init__(self, key: str, value: bytes = b'') -> None:
         if len(key) > 4:
             raise ValueError
         while len(key) < 4:
@@ -1091,7 +1091,7 @@ class RoughtimeTag:
         assert len(self._value) % 4 == 0
         return self._value
 
-    def set_value_bytes(self: RoughtimeTag, val: bytes) -> None:
+    def set_value_bytes(self, val: bytes) -> None:
         '''
         Sets the value of the the tag to a byte string.
 
@@ -1102,7 +1102,7 @@ class RoughtimeTag:
         assert len(val) % 4 == 0
         self._value = val
 
-    def set_value_uint32(self: RoughtimeTag, val: int) -> None:
+    def set_value_uint32(self, val: int) -> None:
         '''
         Sets the value of the the tag to a 32-bit unsigned integer value.
 
@@ -1111,7 +1111,7 @@ class RoughtimeTag:
         '''
         self._value = struct.pack('<I', val)
 
-    def set_value_uint64(self: RoughtimeTag, val: int) -> None:
+    def set_value_uint64(self, val: int) -> None:
         '''
         Sets the value of the the tag to a 64-bit unsigned integer value.
 
@@ -1196,7 +1196,7 @@ class RoughtimePacket(RoughtimeTag):
         RoughtimeError: On any error. The message will describe the specific
                 error that occurred.
     '''
-    def __init__(self: RoughtimePacket,
+    def __init__(self,
                  key: str = '\x00\x00\x00\x00',
                  packet: Optional[bytes] = None,
                  expect_header: bool = False) -> None:
@@ -1258,7 +1258,7 @@ class RoughtimePacket(RoughtimeTag):
                 # Unpack parent tags recursively.
                 self.add_tag(RoughtimePacket(key, packet[offset:end]))
 
-    def add_tag(self: RoughtimePacket, tag: RoughtimeTag) -> None:
+    def add_tag(self, tag: RoughtimeTag) -> None:
         '''
         Adds a tag to the packet:
 
@@ -1276,7 +1276,7 @@ class RoughtimePacket(RoughtimeTag):
         self._tags.append(tag)
         self._tags.sort(key=lambda x: struct.unpack('<I', x.get_tag_bytes()))
 
-    def contains_tag(self: RoughtimePacket, tag: str) -> bool:
+    def contains_tag(self, tag: str) -> bool:
         '''
         Checks if the packet contains a tag.
 
@@ -1295,7 +1295,7 @@ class RoughtimePacket(RoughtimeTag):
                 return True
         return False
 
-    def get_tag(self: RoughtimePacket, tag: str) -> RoughtimeTag:
+    def get_tag(self, tag: str) -> RoughtimeTag:
         '''
         Gets a tag from the packet.
 
@@ -1322,7 +1322,7 @@ class RoughtimePacket(RoughtimeTag):
         'Returns the number of keys in the packet.'
         return len(self._tags)
 
-    def get_value_bytes(self: RoughtimePacket,
+    def get_value_bytes(self,
                         packet_header: bool = False) -> bytes:
         'Returns the raw byte string representing the value of the tag.'
         packet = struct.pack('<I', len(self._tags))
