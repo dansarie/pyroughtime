@@ -253,6 +253,9 @@ class RoughtimeServer:
 
     def __init__(self, publ: str, cert: str, dpriv: str, radi: int = 3) \
             -> None:
+        self._sock = None  # type: Optional[socket.socket]
+        self._run = False
+        self._thread = None  # type: Optional[threading.Thread]
         cert_bytes = b64decode(cert)
         if len(cert_bytes) != 152:
             raise RoughtimeError('Wrong CERT length.')
@@ -302,15 +305,26 @@ class RoughtimeServer:
             ip (str): The IP address the server should bind to.
             port (int): The UDP port the server should bind to.
         '''
-        self._sock = socket.socket(
-            socket.AF_INET, socket.SOCK_DGRAM)  # type: Optional[socket.socket]
-        self._sock.bind((ip, port))
-        self._sock.settimeout(0.001)
-        self._run = True
-        self._thread = threading.Thread(
-            target=RoughtimeServer._recv_thread,
-            args=(self,))  # type: Optional[threading.Thread]
-        self._thread.start()
+        if self._run:
+            raise RoughtimeError('Server already running.')
+        try:
+            self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._sock.bind((ip, port))
+            self._sock.settimeout(0.001)
+            self._run = True
+            self._thread = threading.Thread(
+                target=RoughtimeServer._recv_thread,
+                args=(self,))
+            self._thread.start()
+        except Exception as ex:
+            self._run = False
+            if self._thread is not None:
+                self._thread.join()
+                self._thread = None
+            if self._sock is not None:
+                self._sock.close()
+                self._sock = None
+            raise ex
 
     def stop(self) -> None:
         'Stops the Roughtime server.'
@@ -1366,7 +1380,7 @@ class RoughtimePacket(RoughtimeTag):
         return struct.unpack('<Q', buf[offset:offset + 8])[0]
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(
         description='Query Roughtime servers for the current time and print '
         'results. This utility can be used to query either a single Roughtime '
@@ -1444,3 +1458,7 @@ if __name__ == '__main__':
         print('Inconsistent time replies detected!')
         print('JSON malfeasance report:')
         print(cl.get_malfeasance_report())
+
+
+if __name__ == '__main__':
+    main()
