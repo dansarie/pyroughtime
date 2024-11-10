@@ -1299,9 +1299,13 @@ class RoughtimePacket(RoughtimeTag):
 
         Returns:
             boolean
+
+        Raises:
+            ValueError: If the tag key provided in the argument is longer than
+                four characters.
         '''
         if len(tag) > 4:
-            raise ValueError
+            raise ValueError('Invalid tag key length.')
         while len(tag) < 4:
             tag += '\x00'
         for t in self._tags:
@@ -1314,13 +1318,19 @@ class RoughtimePacket(RoughtimeTag):
         Gets a tag from the packet.
 
         Args:
-            tag (str): The tag to get.
+            tag (str): The key for the tag to get.
 
         Return:
             RoughtimeTag or None.
+
+        Raises:
+            RoughtimeError: If a tag with the specified key is not present in
+                the packet.
+            ValueError: If the tag key provided in the argument is longer than
+                four characters.
         '''
         if len(tag) > 4:
-            raise RoughtimeError('Invalid tag key length.')
+            raise ValueError('Invalid tag key length.')
         while len(tag) < 4:
             tag += '\x00'
         for t in self._tags:

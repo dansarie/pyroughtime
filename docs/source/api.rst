@@ -50,6 +50,22 @@ RoughtimeResult
    :undoc-members:
    :show-inheritance:
 
+RoughtimeTag
+------------
+
+.. autoclass:: RoughtimeTag
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+RoughtimePacket
+---------------
+
+.. autoclass:: RoughtimePacket
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 RoughtimeError
 ---------------
 
