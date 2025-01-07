@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # pyroughtime
-# Copyright (C) 2019-2024 Marcus Dansarie <marcus@dansarie.se>
+# Copyright (C) 2019-2025 Marcus Dansarie <marcus@dansarie.se>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -56,7 +56,8 @@ class RoughtimeResult:
                  mint: int,
                  maxt: int,
                  pathlen: int,
-                 ver: int) -> None:
+                 ver: int,
+                 vers: list[int]) -> None:
         self._publ = publ
         self._nonce = nonce
         self._blind = blind
@@ -69,6 +70,7 @@ class RoughtimeResult:
         self._maxt = maxt
         self._pathlen = pathlen
         self._ver = ver
+        self._vers = vers
 
     def __str__(self: RoughtimeResult) -> str:
         return self.prettytime()
@@ -114,9 +116,21 @@ class RoughtimeResult:
         return self._pathlen
 
     def ver(self: RoughtimeResult) -> str:
-        if self._ver & 0x80000000 != 0:
-            return 'draft-%02d' % (self._ver & 0x7fffffff)
-        return str(self._ver)
+        return RoughtimeResult._ver_to_str(self._ver)
+
+    def vers(self: RoughtimeResult) -> str:
+        ret = ''
+        for v in self._vers:
+            if len(ret) != 0:
+                ret += ' '
+            ret += RoughtimeResult._ver_to_str(v)
+        return ret
+
+    @staticmethod
+    def _ver_to_str(ver: int) -> str:
+        if ver & 0x80000000 != 0:
+            return 'draft-%02d' % (ver & 0x7fffffff)
+        return str(ver)
 
 
 class RoughtimeServer:
@@ -136,10 +150,10 @@ class RoughtimeServer:
         RoughtimeError: If cert was not signed with publ or if cert and dpriv
                 do not represent a valid ed25519 certificate pair.
     '''
-    CERTIFICATE_CONTEXT = b'RoughTime v1 delegation signature--\x00'
+    CERTIFICATE_CONTEXT = b'RoughTime v1 delegation signature\x00'
     SIGNED_RESPONSE_CONTEXT = b'RoughTime v1 response signature\x00'
     ROUGHTIME_HEADER = 0x4d49544847554f52
-    ROUGHTIME_VERSION = 0x8000000b
+    ROUGHTIME_VERSION = 0x8000000c
 
     def __init__(self: RoughtimeServer, publ: str, cert: str, dpriv: str,
                  radi: int = 3) -> None:
@@ -148,8 +162,8 @@ class RoughtimeServer:
             raise RoughtimeError('Wrong CERT length.')
         self._cert = RoughtimePacket('CERT', cert_bytes)
         self._dpriv = eddsa.import_private_key(base64.b64decode(dpriv))
-        if radi < 3:
-            radi = 3
+        if radi < 1:
+            radi = 1
         self._radi = int(radi)
 
         # Ensure that CERT was signed with publ.
@@ -230,17 +244,17 @@ class RoughtimeServer:
         return x + 1
 
     @staticmethod
-    def _construct_merkle(nonces: list[bytes],
+    def _construct_merkle(msgs: list[bytes],
                           prev: Optional[list[list[bytes]]] = None,
                           height: Optional[int] = None) -> list[list[bytes]]:
         '''
-        Recursively builds a Merkle tree from a list of nonces.
+        Recursively builds a Merkle tree from a list of request messages.
 
         Args:
-            nonces (list[bytes]): List of nonces to include in the Merkle tree.
+            msgs (list[bytes]): List of messages to include in the Merkle tree.
             prev (list[bytes] | None): The partially built tree. Set to None on
                     first call.
-            height: (int | None): Remaining height of the Merkle tree. Set to
+            height (int | None): Remaining height of the Merkle tree. Set to
                     None on first call.
 
         Returns:
@@ -249,18 +263,18 @@ class RoughtimeServer:
 
         # If this is the initial call to the function.
         if prev is None:
-            # Hash nonces.
+            # Hash messages.
             hashes = []
-            for n in nonces:
+            for m in msgs:
                 ha = SHA512.new()
-                ha.update(b'\x00' + n)
+                ha.update(b'\x00' + m)
                 hashes.append(ha.digest()[:32])
             # Calculate next power of two and height of tree.
             size = RoughtimeServer._clp2(len(hashes))
             height = RoughtimeServer._ctz(size)
             # Extend nonce list to the next power of two.
             hashes += [os.urandom(32) for x in range(size - len(hashes))]
-            return RoughtimeServer._construct_merkle(nonces, [hashes], height)
+            return RoughtimeServer._construct_merkle(hashes, [hashes], height)
 
         assert height is not None
 
@@ -270,7 +284,7 @@ class RoughtimeServer:
         out = []
         for i in range(1 << (height - 1)):
             ha = SHA512.new()
-            ha.update(b'\x01' + nonces[i * 2] + nonces[i * 2 + 1])
+            ha.update(b'\x01' + msgs[i * 2] + msgs[i * 2 + 1])
             out.append(ha.digest()[:32])
         prev.append(out)
         return RoughtimeServer._construct_merkle(out, prev, height - 1)
@@ -323,11 +337,16 @@ class RoughtimeServer:
                 continue
             version_ok = False
             ver_bytes = ver.get_value_bytes()
+            prev = 0
             for n in range(ver.get_value_len() // 4):
-                if RoughtimePacket.unpack_uint32(ver_bytes, n * 4) == \
-                        RoughtimeServer.ROUGHTIME_VERSION:
+                vernum = RoughtimePacket.unpack_uint32(ver_bytes, n * 4)
+                if n != 0 and vernum <= prev:
+                    print('Version numbers not sorted')
+                    break
+                if vernum == RoughtimeServer.ROUGHTIME_VERSION:
                     version_ok = True
                     break
+                prev = vernum
             if not version_ok:
                 print('No matching version in request')
                 continue
@@ -349,7 +368,7 @@ class RoughtimeServer:
                           % (request_srv.hex(), ref._srvval.hex()))
                     continue
 
-            noncelist = [nonc]
+            noncelist = [data]
             merkle = RoughtimeServer._construct_merkle(noncelist)
             path_bytes = RoughtimeServer._construct_merkle_path(merkle, 0)
 
@@ -357,8 +376,6 @@ class RoughtimeServer:
             reply = RoughtimePacket()
             reply.add_tag(ref._cert)
             reply.add_tag(request.get_tag('NONC'))
-            reply.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(
-                RoughtimeServer.ROUGHTIME_VERSION)))
 
             # Single nonce Merkle tree.
             indx = RoughtimeTag('INDX')
@@ -370,6 +387,11 @@ class RoughtimeServer:
 
             srep = RoughtimePacket('SREP')
 
+            verbytes = RoughtimeTag.uint32_to_bytes(
+                RoughtimeServer.ROUGHTIME_VERSION)
+            srep.add_tag(RoughtimeTag('VER', verbytes))
+            srep.add_tag(RoughtimeTag('VERS', verbytes))
+
             root = RoughtimeTag('ROOT', merkle[-1][0])
             srep.add_tag(root)
 
@@ -380,8 +402,8 @@ class RoughtimeServer:
 
             radi = RoughtimeTag('RADI')
             radival = ref._radi
-            if radival < 3:
-                radival = 3
+            if radival < 1:
+                radival = 1
             radi.set_value_uint32(radival)
             srep.add_tag(radi)
             reply.add_tag(srep)
@@ -660,40 +682,35 @@ class RoughtimeClient:
                 address, port, request_packet_bytes, timeout)
 
         # Get reply tags.
-        srep = reply.get_tag('SREP')
-        cert = reply.get_tag('CERT')
-        assert isinstance(srep, RoughtimePacket)
-        assert isinstance(cert, RoughtimePacket)
-        if srep is None or cert is None:
-            raise RoughtimeError('Missing tag in server reply.')
-        dele = cert.get_tag('DELE')
-        assert isinstance(dele, RoughtimePacket)
-        if dele is None:
-            raise RoughtimeError('Missing tag in server reply.')
-        if not reply.contains_tag('NONC'):
-            raise RoughtimeError('Missing tag in server reply.')
-        nonc = reply.get_tag('NONC')
-        if nonc.get_value_bytes() != nonce:
-            raise RoughtimeError('Bad NONC in server reply.')
-        ver = reply.get_tag('VER')
-
         try:
+            srep = reply.get_tag('SREP')
+            cert = reply.get_tag('CERT')
+            if not isinstance(srep, RoughtimePacket) or \
+               not isinstance(cert, RoughtimePacket):
+                raise Exception()
+            dele = cert.get_tag('DELE')
+            if not isinstance(dele, RoughtimePacket):
+                raise Exception()
+            nonc = reply.get_tag('NONC')
             dsig = cert.get_tag('SIG').get_value_bytes()
             midp = srep.get_tag('MIDP').to_int()
             radi = srep.get_tag('RADI').to_int()
             root = srep.get_tag('ROOT').get_value_bytes()
-            sig = reply.get_tag('SIG').get_value_bytes()
+            sig  = reply.get_tag('SIG').get_value_bytes()
             indx = reply.get_tag('INDX').to_int()
             path = reply.get_tag('PATH').get_value_bytes()
             pubk = dele.get_tag('PUBK').get_value_bytes()
             mint = dele.get_tag('MINT').to_int()
             maxt = dele.get_tag('MAXT').to_int()
-            ver = reply.get_tag('VER')
-            if ver is not None:
-                ver_num = ver.to_int()
+            ver  = srep.get_tag('VER')
+            vers = srep.get_tag('VERS')
 
         except Exception:
             raise RoughtimeError('Missing tag in server reply or parse error.')
+        if nonc.get_value_bytes() != nonce:
+            raise RoughtimeError('Bad NONC in server reply.')
+        ver_num = ver.to_int()
+        ver_list = vers.to_int32_list()
 
         # Verify signature of DELE with long term certificate.
         try:
@@ -713,8 +730,8 @@ class RoughtimeClient:
 
         ha = SHA512.new()
 
-        # Ensure that Merkle tree is correct and includes nonce.
-        ha.update(b'\x00' + nonce)
+        # Ensure that Merkle tree is correct and includes request packet.
+        ha.update(b'\x00' + request_packet_bytes)
         curr_hash = ha.digest()[:node_size]
         if len(path) % node_size != 0:
             raise RoughtimeError('PATH length not a multiple of %d.'
@@ -751,7 +768,8 @@ class RoughtimeClient:
         result = RoughtimeResult(
             publ, base64.b64encode(nonce).decode('ascii'),
             base64.b64encode(blind).decode('ascii'), request_packet_bytes,
-            result_packet_bytes, midp, radi, rtt, mint, maxt, pathlen, ver_num)
+            result_packet_bytes, midp, radi, rtt, mint, maxt, pathlen, ver_num,
+            ver_list)
 
         self._prev_replies.append(result)
         while len(self._prev_replies) > self._max_history_len:
@@ -905,6 +923,13 @@ class RoughtimeTag:
             raise ValueError
         return val
 
+    def to_int32_list(self) -> list[int]:
+        ret = []
+        for n in range(0, len(self._value), 4):
+            (val,) = struct.unpack('<I', self._value[n:n + 4])
+            ret.append(val)
+        return ret
+
     @staticmethod
     def tag_str_to_uint32(tag: str) -> bytes:
         'Converts a tag string to its uint32 representation.'
@@ -1039,7 +1064,8 @@ class RoughtimePacket(RoughtimeTag):
                 return True
         return False
 
-    def get_tag(self: RoughtimePacket, tag: str) -> RoughtimeTag:
+    def get_tag(self: RoughtimePacket, tag: str) -> \
+            RoughtimeTag | RoughtimePacket:
         '''
         Gets a tag from the packet.
 
@@ -1047,7 +1073,10 @@ class RoughtimePacket(RoughtimeTag):
             tag (str): The tag to get.
 
         Return:
-            RoughtimeTag or None.
+            RoughtimeTag
+
+        Raises:
+            RoughtimeError: if the tag is not present in the packet.
         '''
         if len(tag) > 4:
             raise RoughtimeError('Invalid tag key length.')
@@ -1138,7 +1167,8 @@ if __name__ == '__main__':
     if args.s is not None:
         repl = cl.query(args.s[0], int(args.s[1]), args.s[2])
         print('%s (RTT: %.1f ms)' % (repl.prettytime(), repl.rtt() * 1000))
-        print('Server version: ' + repl.ver())
+        print('Reply version: ' + repl.ver())
+        print('Server versions: ' + repl.vers())
         print('Delegate key validity start: %s' %
               repl.mint().strftime('%Y-%m-%d %H:%M:%S'))
         print('Delegate key validity end:   %s' %

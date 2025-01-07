@@ -11,7 +11,7 @@ In addition to a Roughtime client, Pyroughtime also contains a simple server imp
 be used for testing and validation.
 
 Currently, Pyroughtime implements the version of the Roughtime protocol described by
-[draft-ietf-ntp-roughtime-11](https://datatracker.ietf.org/doc/html/draft-ietf-ntp-roughtime-11).
+[draft-ietf-ntp-roughtime-12](https://datatracker.ietf.org/doc/html/draft-ietf-ntp-roughtime-12).
 
 ## Dependencies
 
@@ -77,7 +77,7 @@ Press enter to stop...
 
 ## License and Copyright
 
-Copyright (C) 2019-2024 Marcus Dansarie
+Copyright (C) 2019-2025 Marcus Dansarie
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 General Public License as published by the Free Software Foundation, either version 3 of the
