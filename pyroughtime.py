@@ -714,6 +714,7 @@ class RoughtimeClient:
 
             # Wait for reply
             while time.monotonic_ns() - request_time < timeout:
+                receive_time = None
                 remtime = timeout - (time.monotonic_ns() - request_time)
                 sock.settimeout(remtime * 1E-9)
                 try:
@@ -726,12 +727,12 @@ class RoughtimeClient:
                 if repl_addr == sockaddr[0] and repl_port == sockaddr[1]:
                     break
             sock.close()
-            if receive_time - request_time >= timeout:
+            if receive_time is None:
                 # Try next IP on timeout.
                 continue
             # Break out of loop if successful.
             break
-        if receive_time - request_time >= timeout:
+        if receive_time is None:
             raise RoughtimeError('Timeout while waiting for reply.')
         reply = RoughtimePacket(packet=data, expect_header=True)
 
