@@ -469,8 +469,8 @@ class RoughtimeServer:
                 print('Request missing NONC tag.')
                 continue
             ver = request.get_tag('VER')
-            if ver.get_value_len() % 4 != 0:
-                print('Wrong VER value length: %d' % ver.get_value_len())
+            if ver.get_value_len() % 4 != 0 or ver.get_value_len() > 128:
+                print('Bad VER value length: %d' % ver.get_value_len())
                 continue
             version_ok = False
             ver_bytes = ver.get_value_bytes()
@@ -491,7 +491,13 @@ class RoughtimeServer:
             # Ensure request contains a proper NONC tag.
             nonc = request.get_tag('NONC').get_value_bytes()
             if len(nonc) != 32:
-                print('Wrong NONC value length: %d' % len(nonc))
+                print('Bad NONC value length: %d' % len(nonc))
+                continue
+
+            # Ensure request contains a correct TYPE tag.
+            typetag = request.get_tag('TYPE')
+            if typetag.get_value_len() != 4 or typetag.to_int() != 0:
+                print('Bad TYPE tag value.')
                 continue
 
             # Check SRV tag, if present.
@@ -513,6 +519,8 @@ class RoughtimeServer:
             reply = RoughtimePacket()
             reply.add_tag(ref._cert)
             reply.add_tag(request.get_tag('NONC'))
+            reply.add_tag(RoughtimeTag('TYPE',
+                                       RoughtimeTag.uint32_to_bytes(1)))
 
             # Single nonce Merkle tree.
             indx = RoughtimeTag('INDX')
@@ -858,6 +866,7 @@ class RoughtimeClient:
         packet.add_tag(RoughtimeTag('VER', RoughtimeTag.uint32_to_bytes(
             RoughtimeServer.ROUGHTIME_VERSION)))
         packet.add_tag(RoughtimeTag('NONC', nonce))
+        packet.add_tag(RoughtimeTag('TYPE', RoughtimeTag.uint32_to_bytes(0)))
         if protocol == 'udp':
             packet.add_padding()
         request_packet_bytes = packet.get_value_bytes(True)
@@ -883,6 +892,7 @@ class RoughtimeClient:
             if not isinstance(dele, RoughtimePacket):
                 raise Exception()
             nonc = reply.get_tag('NONC')
+            typ  = reply.get_tag('TYPE').to_int()
             dsig = cert.get_tag('SIG').get_value_bytes()
             midp = srep.get_tag('MIDP').to_int()
             radi = srep.get_tag('RADI').to_int()
@@ -900,8 +910,12 @@ class RoughtimeClient:
             raise RoughtimeError('Missing tag in server reply or parse error.')
         if nonc.get_value_bytes() != nonce:
             raise RoughtimeError('Bad NONC in server reply.')
+        if typ != 1:
+            raise RoughtimeError('Bad TYPE tag in server reply.')
         ver_num = ver.to_int()
         ver_list = vers.to_int32_list()
+        if len(ver_list) > 32:
+            raise RoughtimeError('Too many versions in VERS tag.')
 
         # Verify signature of DELE with long term certificate.
         try:
