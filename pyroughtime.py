@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # pyroughtime
-# Copyright (C) 2019-2025 Marcus Dansarie <marcus@dansarie.se>
+# Copyright (C) 2019-2026 Marcus Dansarie <marcus@dansarie.se>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -266,10 +266,10 @@ class RoughtimeServer:
         RoughtimeError: If cert was not signed with publ or if cert and dpriv
                 do not represent a valid Ed25519 certificate pair.
     '''
-    CERTIFICATE_CONTEXT = b'RoughTime v1 delegation signature\x00'
-    SIGNED_RESPONSE_CONTEXT = b'RoughTime v1 response signature\x00'
+    CERTIFICATE_CONTEXT = b'Roughtime v1 delegation signature\x00'
+    SIGNED_RESPONSE_CONTEXT = b'Roughtime v1 response signature\x00'
     ROUGHTIME_HEADER = 0x4d49544847554f52
-    ROUGHTIME_VERSION = 0x8000000c
+    ROUGHTIME_VERSION = 1
 
     def __init__(self, publ: str, cert: str, dpriv: str, radi: int = 3,
                  badtime: bool = False) -> None:
@@ -638,7 +638,7 @@ class RoughtimeServer:
     @staticmethod
     def test_server() -> tuple[RoughtimeServer, str]:
         '''
-        Starts a Roughtime server listening on 127.0.0.1, port 2002 for
+        Starts a Roughtime server listening on 127.0.0.1, port 5319 for
         testing.
 
         Returns:
@@ -648,7 +648,7 @@ class RoughtimeServer:
         priv, publ = RoughtimeServer.create_key()
         cert, dpriv = RoughtimeServer.create_delegated_key(priv)
         serv = RoughtimeServer(publ, cert, dpriv)
-        serv.start('127.0.0.1', 2002)
+        serv.start('127.0.0.1', 5319)
         return serv, publ
 
 

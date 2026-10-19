@@ -11,8 +11,8 @@ time responses sent by misbehaving or malfunctioning time servers.
 In addition to a Roughtime client, Pyroughtime also contains a simple server implementation that can
 be used for testing and validation.
 
-Currently, Pyroughtime implements the version of the Roughtime protocol described by
-[draft-ietf-ntp-roughtime-12](https://datatracker.ietf.org/doc/html/draft-ietf-ntp-roughtime-12).
+Pyroughtime implements the version of the Roughtime protocol described by
+[RFC 10049](https://doi.org/10.17487/rfc10049).
 
 ## Dependencies
 
@@ -26,7 +26,7 @@ The `-s` flag is used to query a single server. It takes three arguments: a serv
 port, and the server's long-term public key in base64 format.
 
 ```console
-$ ./pyroughtime.py -s roughtime.se 2002 S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=
+$ ./pyroughtime.py -s roughtime.se 5319 S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=
 2024-11-07 20:23:52 UTC (+/-  3 s) (RTT: 36.9 ms)
 Server version: draft-11
 Delegate key validity start: 2024-11-05 00:00:00
@@ -56,8 +56,8 @@ as RoughtimeResult objects which can be queried for information about the time r
 from pyroughtime import RoughtimeClient, RoughtimeServer
 serv, publ = RoughtimeServer.test_server()
 cl = RoughtimeClient()
-reply1 = cl.query('127.0.0.1', 2002, publ)
-reply2 = cl.query('roughtime.se', 2002, 'S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=')
+reply1 = cl.query('127.0.0.1', 5319, publ)
+reply2 = cl.query('roughtime.se', 5319, 'S3AzfZJ5CjSdkJ21ZJGbxqdYP/SoE8fXKY0+aicsehI=')
 serv.stop()
 print(reply1) # Print a string representation of the received time.
 time = reply1.datetime() # Get the received midpoint as a datetime instance.
@@ -71,14 +71,14 @@ key in base64 format. A delegate key is automatically generated.
 
 ```console
 $ ./pyroughtime.py -t AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-Roughtime server started on port 2002
+Roughtime server started on port 5319
 Public key: O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=
 Press enter to stop...
 ```
 
 ## License and Copyright
 
-Copyright (C) 2019-2025 Marcus Dansarie
+Copyright (C) 2019-2026 Marcus Dansarie
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 General Public License as published by the Free Software Foundation, either version 3 of the
